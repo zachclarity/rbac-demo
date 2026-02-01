@@ -4,12 +4,11 @@ Comprehensive Audit Logging
 Logs every data access, modification, and denied access attempt.
 All CRUD operations and security events are recorded.
 """
-import json
 from datetime import datetime
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
 from app.auth import CurrentUser
+from app.models import AuditLog
 
 
 async def log_event(
@@ -33,26 +32,7 @@ async def log_event(
     session_id: Optional[str] = None,
     details: Optional[dict] = None,
 ):
-    """Write an audit log entry."""
-    query = text("""
-        INSERT INTO audit_log (
-            event_timestamp, user_id, username, organization, user_clearance,
-            action, resource_type, resource_id, record_title, field_name,
-            classification_required, compartments_required,
-            was_allowed, denial_reason, old_value, new_value,
-            ip_address, user_agent, request_path, request_method,
-            session_id, details
-        ) VALUES (
-            :ts, :uid, :uname, :org, :clearance,
-            :action, :rtype, :rid, :rtitle, :fname,
-            :class_req, :comp_req::text[],
-            :allowed, :denial, :old_val, :new_val,
-            :ip, :ua, :path, :method,
-            :session, :details::jsonb
-        )
-    """)
-
-    user_id = None
+    """Write an audit log entry using ORM."""
     username = "anonymous"
     organization = "Unknown"
     clearance = None
@@ -62,30 +42,32 @@ async def log_event(
         organization = user.organization
         clearance = user.clearance_level
 
-    await db.execute(query, {
-        "ts": datetime.utcnow(),
-        "uid": user_id,
-        "uname": username,
-        "org": organization,
-        "clearance": clearance,
-        "action": action,
-        "rtype": resource_type,
-        "rid": resource_id,
-        "rtitle": record_title,
-        "fname": field_name,
-        "class_req": classification_required,
-        "comp_req": compartments_required if compartments_required else None,
-        "allowed": was_allowed,
-        "denial": denial_reason,
-        "old_val": old_value,
-        "new_val": new_value,
-        "ip": ip_address,
-        "ua": user_agent,
-        "path": request_path,
-        "method": request_method,
-        "session": session_id,
-        "details": json.dumps(details) if details else None,
-    })
+    entry = AuditLog(
+        event_timestamp=datetime.utcnow(),
+        user_id=None,
+        username=username,
+        organization=organization,
+        user_clearance=clearance,
+        action=action,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        record_title=record_title,
+        field_name=field_name,
+        classification_required=classification_required,
+        compartments_required=compartments_required if compartments_required else None,
+        was_allowed=was_allowed,
+        denial_reason=denial_reason,
+        old_value=old_value,
+        new_value=new_value,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        request_path=request_path,
+        request_method=request_method,
+        session_id=session_id,
+        details=details if details else None,
+    )
+
+    db.add(entry)
     await db.commit()
 
 
@@ -167,7 +149,7 @@ async def log_cell_access_batch(
 async def log_crud_event(
     db: AsyncSession,
     user: CurrentUser,
-    action: str,  # CREATE, UPDATE, DELETE
+    action: str,
     resource_type: str,
     resource_id: Optional[str] = None,
     record_title: Optional[str] = None,
