@@ -4,8 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RBAC + Cell-Level Security Demo</title>
-    <!-- keycloak-js version MUST match your Keycloak server major version (26.x) -->
-    <script src="https://cdn.jsdelivr.net/npm/keycloak-js@26.0.5/dist/keycloak.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/keycloak-js@latest/dist/keycloak.min.js"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -304,65 +303,39 @@
 
         // ─── Keycloak Instance ─────────────────────────────────────────
         let keycloakInstance = null;
-        let keycloakError = null;
 
         function initKeycloak() {
             return new Promise((resolve, reject) => {
-                console.log('[KC] Initializing Keycloak...');
-                console.log('[KC] URL:', KEYCLOAK_URL);
-                console.log('[KC] Realm:', KEYCLOAK_REALM);
-                console.log('[KC] Client:', KEYCLOAK_CLIENT_ID);
+                const kc = new Keycloak({
+                    url: KEYCLOAK_URL,
+                    realm: KEYCLOAK_REALM,
+                    clientId: KEYCLOAK_CLIENT_ID,
+                });
 
-                // First verify Keycloak is reachable
-                const discoveryUrl = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/.well-known/openid-configuration`;
-                console.log('[KC] Testing discovery URL:', discoveryUrl);
+                kc.init({
+                    onLoad: 'check-sso',
+                    // silentCheckSsoRedirectUri removed — file doesn't exist, causes silent hang
+                    pkceMethod: 'S256',
+                    checkLoginIframe: false,
+                    enableLogging: true,
+                }).then(authenticated => {
+                    console.log('[KC] Init success. Authenticated:', authenticated);
+                    keycloakInstance = kc;
 
-                fetch(discoveryUrl)
-                    .then(resp => {
-                        if (!resp.ok) {
-                            throw new Error(`Realm discovery failed: HTTP ${resp.status}. Is realm "${KEYCLOAK_REALM}" created?`);
-                        }
-                        return resp.json();
-                    })
-                    .then(discoveryData => {
-                        console.log('[KC] Discovery OK. Issuer:', discoveryData.issuer);
-
-                        const kc = new Keycloak({
-                            url: KEYCLOAK_URL,
-                            realm: KEYCLOAK_REALM,
-                            clientId: KEYCLOAK_CLIENT_ID,
+                    // Auto-refresh token
+                    setInterval(() => {
+                        kc.updateToken(30).catch(() => {
+                            console.log('Token refresh failed');
                         });
+                    }, 30000);
 
-                        kc.init({
-                            onLoad: 'check-sso',
-                            // REMOVED: silentCheckSsoRedirectUri — file doesn't exist, causes silent failure
-                            pkceMethod: 'S256',
-                            checkLoginIframe: false,
-                        }).then(authenticated => {
-                            console.log('[KC] Init success. Authenticated:', authenticated);
-                            keycloakInstance = kc;
-
-                            // Auto-refresh token
-                            setInterval(() => {
-                                kc.updateToken(30).catch(() => {
-                                    console.log('[KC] Token refresh failed');
-                                });
-                            }, 30000);
-
-                            resolve({ authenticated, keycloak: kc });
-                        }).catch(err => {
-                            console.error('[KC] Init FAILED:', err);
-                            keycloakError = `Keycloak init failed: ${err?.message || err}`;
-                            // Still set the instance so login() button works as fallback
-                            keycloakInstance = kc;
-                            resolve({ authenticated: false, keycloak: kc, error: keycloakError });
-                        });
-                    })
-                    .catch(err => {
-                        console.error('[KC] Discovery FAILED:', err);
-                        keycloakError = `Cannot reach Keycloak: ${err.message}. Check that ${discoveryUrl} is accessible.`;
-                        resolve({ authenticated: false, keycloak: null, error: keycloakError });
-                    });
+                    resolve({ authenticated, keycloak: kc });
+                }).catch(err => {
+                    console.error('Keycloak init failed:', err);
+                    // Still set instance so login button can attempt redirect
+                    keycloakInstance = kc;
+                    resolve({ authenticated: false, keycloak: kc });
+                });
             });
         }
 
@@ -384,22 +357,12 @@
         }
 
         // ─── Login Screen ──────────────────────────────────────────────
-        function LoginScreen({ error }) {
+        function LoginScreen() {
             const [loading, setLoading] = useState(false);
 
             const login = () => {
                 setLoading(true);
-                if (keycloakInstance) {
-                    keycloakInstance.login({ redirectUri: window.location.origin });
-                } else {
-                    // Fallback: redirect directly to Keycloak auth endpoint
-                    const authUrl = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/auth`
-                        + `?client_id=${KEYCLOAK_CLIENT_ID}`
-                        + `&response_type=code`
-                        + `&scope=openid profile email`
-                        + `&redirect_uri=${encodeURIComponent(window.location.origin + '/')}`;
-                    window.location.href = authUrl;
-                }
+                keycloakInstance?.login({ redirectUri: window.location.origin });
             };
 
             return (
@@ -408,28 +371,6 @@
                         <div style={{ fontSize: 40, marginBottom: 16 }}>🔐</div>
                         <h1>Classified Data Access System</h1>
                         <p>RBAC + Cell-Level Security with Federated OIDC Authentication</p>
-
-                        {error && (
-                            <div style={{
-                                background: '#450a0a', border: '1px solid #7f1d1d', borderRadius: 8,
-                                padding: 16, marginBottom: 20, textAlign: 'left', fontSize: 12
-                            }}>
-                                <div style={{color: '#fca5a5', fontWeight: 700, marginBottom: 8}}>⚠ Connection Error</div>
-                                <div style={{color: '#fca5a5', fontFamily: 'JetBrains Mono, monospace', wordBreak: 'break-all'}}>
-                                    {error}
-                                </div>
-                                <div style={{color: '#94a3b8', marginTop: 12, fontSize: 11, lineHeight: 1.8}}>
-                                    <strong>Debug Checklist:</strong><br/>
-                                    1. Open <code style={{background:'#1e293b', padding:'1px 4px', borderRadius:3}}>
-                                    http://localhost:8080/realms/agency-alpha/.well-known/openid-configuration
-                                    </code> in your browser — does it return JSON?<br/>
-                                    2. Check Docker: <code style={{background:'#1e293b', padding:'1px 4px', borderRadius:3}}>docker-compose ps</code> — is keycloak-alpha running?<br/>
-                                    3. Check logs: <code style={{background:'#1e293b', padding:'1px 4px', borderRadius:3}}>docker-compose logs keycloak-alpha</code><br/>
-                                    4. Press F12 → Console tab for detailed errors
-                                </div>
-                            </div>
-                        )}
-
                         <button className="login-btn alpha" onClick={login} disabled={loading}>
                             {loading ? 'Redirecting...' : 'Sign In via Keycloak'}
                         </button>
@@ -895,13 +836,11 @@
             const [user, setUser] = useState(null);
             const [activeTab, setActiveTab] = useState('records');
             const [kcReady, setKcReady] = useState(false);
-            const [initError, setInitError] = useState(null);
 
             useEffect(() => {
-                initKeycloak().then(async ({ authenticated: auth, keycloak: kc, error }) => {
+                initKeycloak().then(async ({ authenticated: auth, keycloak: kc }) => {
                     setAuthenticated(auth);
                     setKcReady(true);
-                    if (error) setInitError(error);
 
                     if (auth && kc?.token) {
                         try {
@@ -924,7 +863,7 @@
             }
 
             if (!authenticated) {
-                return <LoginScreen error={initError} />;
+                return <LoginScreen />;
             }
 
             const canViewAdmin = user?.roles?.some(r => ['admin', 'manager'].includes(r));
