@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+sqlalchemy[asyncio]
+asyncpg
+psycopg2-binary
+python-jose[cryptography]
+httpx
+pydantic
+pydantic-settings
+python-multipart

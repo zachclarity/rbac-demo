@@ -1,0 +1,192 @@
+{
+  "realm": "agency-alpha",
+  "enabled": true,
+  "displayName": "Agency Alpha",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "sslRequired": "none",
+  "accessTokenLifespan": 1800,
+  "roles": {
+    "realm": [
+      { "name": "viewer", "description": "Can view unclassified and authorized data" },
+      { "name": "analyst", "description": "Can view and analyze data within clearance" },
+      { "name": "manager", "description": "Can manage records and approve need-to-know" },
+      { "name": "admin", "description": "Full system administration" },
+      { "name": "auditor", "description": "Can view all audit logs" }
+    ]
+  },
+  "clientScopes": [
+    {
+      "name": "security-attributes",
+      "description": "Maps security clearance attributes to token claims",
+      "protocol": "openid-connect",
+      "attributes": { "include.in.token.scope": "true" },
+      "protocolMappers": [
+        {
+          "name": "clearance_level",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "clearance_level",
+            "claim.name": "clearance_level",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "compartments",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "compartments",
+            "claim.name": "compartments",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "organization",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "organization",
+            "claim.name": "organization",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    }
+  ],
+  "defaultDefaultClientScopes": [
+    "web-origins",
+    "acr",
+    "profile",
+    "roles",
+    "email",
+    "security-attributes"
+  ],
+  "clients": [
+    {
+      "clientId": "frontend-app",
+      "name": "Security Demo Frontend",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://localhost:5173/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "http://localhost:5173"
+      ],
+      "protocol": "openid-connect",
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "roles",
+        "email",
+        "security-attributes"
+      ]
+    },
+    {
+      "clientId": "backend-api",
+      "name": "Security Demo Backend",
+      "enabled": true,
+      "bearerOnly": true,
+      "protocol": "openid-connect",
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "roles",
+        "email",
+        "security-attributes"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "alice_admin",
+      "enabled": true,
+      "email": "alice@alpha.gov",
+      "firstName": "Alice",
+      "lastName": "Administrator",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["admin", "auditor"],
+      "attributes": {
+        "clearance_level": ["TOP_SECRET"],
+        "compartments": ["PROJECT_ALPHA,PROJECT_OMEGA,OPERATION_DELTA"],
+        "organization": ["Agency Alpha"]
+      }
+    },
+    {
+      "username": "bob_analyst",
+      "enabled": true,
+      "email": "bob@alpha.gov",
+      "firstName": "Bob",
+      "lastName": "Analyst",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["analyst"],
+      "attributes": {
+        "clearance_level": ["SECRET"],
+        "compartments": ["PROJECT_ALPHA,PROJECT_OMEGA"],
+        "organization": ["Agency Alpha"]
+      }
+    },
+    {
+      "username": "carol_viewer",
+      "enabled": true,
+      "email": "carol@alpha.gov",
+      "firstName": "Carol",
+      "lastName": "Viewer",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["viewer"],
+      "attributes": {
+        "clearance_level": ["CONFIDENTIAL"],
+        "compartments": ["PROJECT_ALPHA"],
+        "organization": ["Agency Alpha"]
+      }
+    },
+    {
+      "username": "dave_manager",
+      "enabled": true,
+      "email": "dave@alpha.gov",
+      "firstName": "Dave",
+      "lastName": "Manager",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["manager", "analyst"],
+      "attributes": {
+        "clearance_level": ["SECRET"],
+        "compartments": ["PROJECT_ALPHA,OPERATION_DELTA"],
+        "organization": ["Agency Alpha"]
+      }
+    },
+    {
+      "username": "eve_auditor",
+      "enabled": true,
+      "email": "eve@alpha.gov",
+      "firstName": "Eve",
+      "lastName": "Auditor",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["auditor", "viewer"],
+      "attributes": {
+        "clearance_level": ["TOP_SECRET"],
+        "compartments": ["PROJECT_ALPHA,PROJECT_OMEGA,OPERATION_DELTA"],
+        "organization": ["Agency Alpha"]
+      }
+    }
+  ]
+}

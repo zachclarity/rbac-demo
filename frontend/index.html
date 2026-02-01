@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RBAC + Cell-Level Security Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/keycloak-js@24.0.0/dist/keycloak.min.js"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-secondary: #111827;
+            --bg-card: #1a2236;
+            --bg-cell: #0d1321;
+            --border: #1e3050;
+            --text-primary: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --unclassified: #22c55e;
+            --confidential: #3b82f6;
+            --secret: #ef4444;
+            --top-secret: #f59e0b;
+            --redacted: #7f1d1d;
+            --redacted-bg: #450a0a;
+            --accent: #6366f1;
+            --success: #10b981;
+            --danger: #ef4444;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .mono { font-family: 'JetBrains Mono', monospace; }
+
+        /* Classification badges */
+        .badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; font-family: 'JetBrains Mono', monospace; }
+        .badge-UNCLASSIFIED { background: #052e16; color: var(--unclassified); border: 1px solid #166534; }
+        .badge-CONFIDENTIAL { background: #0c1e3d; color: var(--confidential); border: 1px solid #1e40af; }
+        .badge-SECRET { background: #2d0a0a; color: var(--secret); border: 1px solid #991b1b; }
+        .badge-TOP_SECRET { background: #2d1f04; color: var(--top-secret); border: 1px solid #92400e; }
+        .badge-REDACTED { background: var(--redacted-bg); color: #fca5a5; border: 1px solid var(--redacted); animation: pulse-red 2s ease-in-out infinite; }
+
+        @keyframes pulse-red {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        /* Role badges */
+        .role-badge { display: inline-flex; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; margin-right: 4px; }
+        .role-admin { background: #312e81; color: #a5b4fc; }
+        .role-manager { background: #1e3a5f; color: #7dd3fc; }
+        .role-analyst { background: #134e4a; color: #5eead4; }
+        .role-viewer { background: #1a2e05; color: #bef264; }
+        .role-auditor { background: #3b0764; color: #d8b4fe; }
+
+        /* Layout */
+        .app-header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 0 24px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .app-header h1 { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+        .app-header h1 span { color: var(--accent); }
+
+        .nav-tabs {
+            display: flex;
+            gap: 2px;
+            background: var(--bg-primary);
+            border-bottom: 1px solid var(--border);
+            padding: 0 24px;
+        }
+        .nav-tab {
+            padding: 12px 20px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        .nav-tab:hover { color: var(--text-primary); }
+        .nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+        .main-content { padding: 24px; max-width: 1600px; margin: 0 auto; }
+
+        /* Cards */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        .card-title { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+
+        /* Data cells grid */
+        .cells-grid { display: grid; gap: 8px; }
+        .cell-row {
+            display: grid;
+            grid-template-columns: 160px 1fr 140px 200px;
+            gap: 12px;
+            padding: 10px 14px;
+            background: var(--bg-cell);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            align-items: center;
+            font-size: 13px;
+        }
+        .cell-row.redacted {
+            background: var(--redacted-bg);
+            border-color: var(--redacted);
+        }
+        .cell-field-name { font-weight: 600; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+        .cell-value { color: var(--text-primary); line-height: 1.5; }
+        .cell-value.redacted-text { color: #fca5a5; font-weight: 700; letter-spacing: 1px; font-family: 'JetBrains Mono', monospace; }
+        .cell-compartments { display: flex; flex-wrap: wrap; gap: 4px; }
+        .compartment-tag {
+            font-size: 10px; padding: 1px 6px; border-radius: 3px;
+            background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* User info panel */
+        .user-panel {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            font-size: 13px;
+        }
+        .user-panel .username { font-weight: 600; }
+        .user-panel .org { color: var(--text-muted); font-size: 11px; }
+
+        /* Access stats */
+        .access-stats {
+            display: flex;
+            gap: 24px;
+            padding: 16px 20px;
+            background: var(--bg-cell);
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid var(--border);
+        }
+        .stat-item { text-align: center; }
+        .stat-value { font-size: 28px; font-weight: 800; font-family: 'JetBrains Mono', monospace; }
+        .stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+
+        /* Tables */
+        .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .data-table th {
+            text-align: left; padding: 10px 12px; background: var(--bg-cell);
+            color: var(--text-muted); font-size: 11px; text-transform: uppercase;
+            letter-spacing: 0.5px; border-bottom: 1px solid var(--border);
+        }
+        .data-table td {
+            padding: 8px 12px; border-bottom: 1px solid var(--border);
+            vertical-align: top;
+        }
+        .data-table tr:hover td { background: rgba(99, 102, 241, 0.05); }
+        .data-table .denied td { background: rgba(127, 29, 29, 0.15); }
+
+        /* Buttons */
+        .btn {
+            padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500;
+            cursor: pointer; border: 1px solid var(--border); transition: all 0.2s;
+            font-family: inherit;
+        }
+        .btn-primary { background: var(--accent); color: white; border-color: var(--accent); }
+        .btn-primary:hover { background: #4f46e5; }
+        .btn-danger { background: transparent; color: var(--danger); border-color: var(--danger); }
+        .btn-danger:hover { background: rgba(239, 68, 68, 0.1); }
+        .btn-ghost { background: transparent; color: var(--text-secondary); }
+        .btn-ghost:hover { color: var(--text-primary); background: rgba(255,255,255,0.05); }
+        .btn-sm { padding: 4px 10px; font-size: 11px; }
+
+        /* Login screen */
+        .login-screen {
+            display: flex; align-items: center; justify-content: center;
+            min-height: 100vh; flex-direction: column; gap: 24px;
+            background: linear-gradient(135deg, #0a0e17 0%, #111827 50%, #0a0e17 100%);
+        }
+        .login-card {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 12px; padding: 48px; text-align: center; max-width: 480px; width: 90%;
+        }
+        .login-card h1 { font-size: 24px; margin-bottom: 8px; }
+        .login-card p { color: var(--text-muted); margin-bottom: 32px; font-size: 14px; }
+        .login-btn {
+            width: 100%; padding: 14px; border-radius: 8px; font-size: 15px;
+            font-weight: 600; cursor: pointer; border: none; transition: all 0.2s;
+            font-family: inherit; margin-bottom: 10px;
+        }
+        .login-btn.alpha { background: var(--accent); color: white; }
+        .login-btn.alpha:hover { background: #4f46e5; }
+
+        /* Filter bar */
+        .filter-bar {
+            display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;
+        }
+        .filter-bar select, .filter-bar input {
+            padding: 6px 12px; border-radius: 6px; font-size: 13px;
+            background: var(--bg-cell); color: var(--text-primary);
+            border: 1px solid var(--border); font-family: inherit;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .cell-row { grid-template-columns: 1fr; }
+            .access-stats { flex-direction: column; }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-primary); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+        .denied-banner {
+            background: var(--redacted-bg);
+            border: 1px solid var(--redacted);
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 12px;
+            color: #fca5a5;
+            margin-top: 4px;
+        }
+
+        .loading {
+            display: flex; align-items: center; justify-content: center;
+            padding: 60px; color: var(--text-muted);
+        }
+        .spinner {
+            width: 24px; height: 24px; border: 3px solid var(--border);
+            border-top-color: var(--accent); border-radius: 50%;
+            animation: spin 0.8s linear infinite; margin-right: 12px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .hidden-records-banner {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            color: #fbbf24;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback, useRef } = React;
+
+        // ─── Configuration ──────────────────────────────────────────────
+        const KEYCLOAK_URL = 'http://localhost:8080';
+        const KEYCLOAK_REALM = 'agency-alpha';
+        const KEYCLOAK_CLIENT_ID = 'frontend-app';
+        const API_BASE = window.location.hostname === 'localhost' && window.location.port === '3000'
+            ? '' // Use nginx proxy
+            : 'http://localhost:8000';
+
+        // ─── Classification Colors ──────────────────────────────────────
+        const classColors = {
+            'UNCLASSIFIED': { bg: '#052e16', fg: '#22c55e', border: '#166534' },
+            'CONFIDENTIAL': { bg: '#0c1e3d', fg: '#3b82f6', border: '#1e40af' },
+            'SECRET': { bg: '#2d0a0a', fg: '#ef4444', border: '#991b1b' },
+            'TOP_SECRET': { bg: '#2d1f04', fg: '#f59e0b', border: '#92400e' },
+        };
+
+        // ─── Badge Component ───────────────────────────────────────────
+        function ClassBadge({ level }) {
+            return <span className={`badge badge-${level}`}>{level?.replace('_', ' ')}</span>;
+        }
+
+        function RoleBadge({ role }) {
+            return <span className={`role-badge role-${role}`}>{role}</span>;
+        }
+
+        // ─── Keycloak Instance ─────────────────────────────────────────
+        let keycloakInstance = null;
+
+        function initKeycloak() {
+            return new Promise((resolve, reject) => {
+                const kc = new Keycloak({
+                    url: KEYCLOAK_URL,
+                    realm: KEYCLOAK_REALM,
+                    clientId: KEYCLOAK_CLIENT_ID,
+                });
+
+                kc.init({
+                    onLoad: 'check-sso',
+                    silentCheckSsoRedirectUri: window.location.origin + '/silent-check-sso.html',
+                    pkceMethod: 'S256',
+                    checkLoginIframe: false,
+                }).then(authenticated => {
+                    keycloakInstance = kc;
+
+                    // Auto-refresh token
+                    setInterval(() => {
+                        kc.updateToken(30).catch(() => {
+                            console.log('Token refresh failed');
+                        });
+                    }, 30000);
+
+                    resolve({ authenticated, keycloak: kc });
+                }).catch(err => {
+                    console.error('Keycloak init failed:', err);
+                    resolve({ authenticated: false, keycloak: null });
+                });
+            });
+        }
+
+        // ─── API Helper ────────────────────────────────────────────────
+        async function apiCall(path, options = {}) {
+            const token = keycloakInstance?.token;
+            const headers = {
+                'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+                ...options.headers,
+            };
+
+            const resp = await fetch(`${API_BASE}${path}`, { ...options, headers });
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+                throw new Error(err.detail || 'API error');
+            }
+            return resp.json();
+        }
+
+        // ─── Login Screen ──────────────────────────────────────────────
+        function LoginScreen() {
+            const [loading, setLoading] = useState(false);
+
+            const login = () => {
+                setLoading(true);
+                keycloakInstance?.login({ redirectUri: window.location.origin });
+            };
+
+            return (
+                <div className="login-screen">
+                    <div className="login-card">
+                        <div style={{ fontSize: 40, marginBottom: 16 }}>🔐</div>
+                        <h1>Classified Data Access System</h1>
+                        <p>RBAC + Cell-Level Security with Federated OIDC Authentication</p>
+                        <button className="login-btn alpha" onClick={login} disabled={loading}>
+                            {loading ? 'Redirecting...' : 'Sign In via Keycloak'}
+                        </button>
+                        <div style={{ marginTop: 24, fontSize: 12, color: '#64748b', lineHeight: 1.8 }}>
+                            <strong>Demo Accounts</strong> (password: <code className="mono">password</code>)<br/>
+                            <code className="mono" style={{color: '#f59e0b'}}>alice_admin</code> — TOP SECRET / All Compartments / Admin<br/>
+                            <code className="mono" style={{color: '#ef4444'}}>bob_analyst</code> — SECRET / ALPHA+OMEGA / Analyst<br/>
+                            <code className="mono" style={{color: '#3b82f6'}}>carol_viewer</code> — CONFIDENTIAL / ALPHA / Viewer<br/>
+                            <code className="mono" style={{color: '#ef4444'}}>dave_manager</code> — SECRET / ALPHA+DELTA / Manager<br/>
+                            <code className="mono" style={{color: '#f59e0b'}}>eve_auditor</code> — TOP SECRET / All / Auditor<br/>
+                            <div style={{marginTop: 8, borderTop: '1px solid #1e3050', paddingTop: 8}}>
+                                <strong>Federated (Agency Bravo)</strong> — Click "Agency Bravo" on login page<br/>
+                                <code className="mono" style={{color: '#ef4444'}}>frank_bravo</code> — SECRET / ALPHA<br/>
+                                <code className="mono" style={{color: '#3b82f6'}}>grace_bravo</code> — CONFIDENTIAL / None
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ─── Records View ──────────────────────────────────────────────
+        function RecordsView({ user }) {
+            const [data, setData] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState(null);
+
+            const fetchRecords = useCallback(async () => {
+                setLoading(true);
+                try {
+                    const result = await apiCall('/api/records');
+                    setData(result);
+                } catch (e) {
+                    setError(e.message);
+                } finally {
+                    setLoading(false);
+                }
+            }, []);
+
+            useEffect(() => { fetchRecords(); }, [fetchRecords]);
+
+            if (loading) return <div className="loading"><div className="spinner"></div>Loading records with security filtering...</div>;
+            if (error) return <div className="card" style={{color: '#ef4444'}}>Error: {error}</div>;
+            if (!data) return null;
+
+            return (
+                <div>
+                    {/* Access Summary */}
+                    <div className="access-stats">
+                        <div className="stat-item">
+                            <div className="stat-value" style={{color: '#6366f1'}}>{data.total_in_system}</div>
+                            <div className="stat-label">Total Records</div>
+                        </div>
+                        <div className="stat-item">
+                            <div className="stat-value" style={{color: '#22c55e'}}>{data.visible_to_you}</div>
+                            <div className="stat-label">Visible To You</div>
+                        </div>
+                        <div className="stat-item">
+                            <div className="stat-value" style={{color: '#ef4444'}}>{data.hidden_by_classification}</div>
+                            <div className="stat-label">Hidden (Insufficient Clearance)</div>
+                        </div>
+                        <div className="stat-item">
+                            <div className="stat-value" style={{color: '#f59e0b'}}>
+                                {data.records?.reduce((sum, r) => sum + r.access_stats.redacted_cells, 0) || 0}
+                            </div>
+                            <div className="stat-label">Redacted Cells</div>
+                        </div>
+                    </div>
+
+                    {data.hidden_by_classification > 0 && (
+                        <div className="hidden-records-banner">
+                            ⚠️ <strong>{data.hidden_by_classification} record(s)</strong> are hidden because they exceed your
+                            <ClassBadge level={user?.clearance_level} /> clearance level.
+                        </div>
+                    )}
+
+                    {/* Records */}
+                    {data.records?.map(record => (
+                        <div key={record.id} className="card">
+                            <div className="card-header">
+                                <div className="card-title">
+                                    <ClassBadge level={record.record_classification} />
+                                    {record.title}
+                                </div>
+                                <div style={{fontSize: 12, color: '#64748b'}}>
+                                    {record.access_stats.accessible_cells}/{record.access_stats.total_cells} cells accessible
+                                </div>
+                            </div>
+                            {record.description && (
+                                <p style={{color: '#94a3b8', fontSize: 13, marginBottom: 16}}>{record.description}</p>
+                            )}
+                            <div className="cells-grid">
+                                <div className="cell-row" style={{background: '#0f172a', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px'}}>
+                                    <div>Field</div>
+                                    <div>Value</div>
+                                    <div>Classification</div>
+                                    <div>Compartments</div>
+                                </div>
+                                {record.cells?.map((cell, idx) => (
+                                    <div key={idx} className={`cell-row ${!cell.accessible ? 'redacted' : ''}`}>
+                                        <div className="cell-field-name">{cell.field_name}</div>
+                                        <div className={`cell-value ${!cell.accessible ? 'redacted-text' : ''}`}>
+                                            {cell.field_value}
+                                            {!cell.accessible && cell.denial_reason && (
+                                                <div className="denied-banner">
+                                                    🚫 {cell.denial_reason}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div><ClassBadge level={cell.cell_classification} /></div>
+                                        <div className="cell-compartments">
+                                            {cell.accessible
+                                                ? (cell.compartments?.length > 0
+                                                    ? cell.compartments.map((c, i) => <span key={i} className="compartment-tag">{c}</span>)
+                                                    : <span style={{color: '#64748b', fontSize: 11}}>None required</span>)
+                                                : <span className="badge badge-REDACTED">REDACTED</span>
+                                            }
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+
+                    {data.records?.length === 0 && (
+                        <div className="card" style={{textAlign: 'center', padding: 48, color: '#64748b'}}>
+                            No records are accessible at your clearance level.
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // ─── Admin View ────────────────────────────────────────────────
+        function AdminView({ user }) {
+            const [users, setUsers] = useState([]);
+            const [approvals, setApprovals] = useState([]);
+            const [overview, setOverview] = useState(null);
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                async function load() {
+                    try {
+                        const [u, a, o] = await Promise.all([
+                            apiCall('/api/admin/users'),
+                            apiCall('/api/admin/approvals'),
+                            apiCall('/api/admin/overview'),
+                        ]);
+                        setUsers(u.users || []);
+                        setApprovals(a.approvals || []);
+                        setOverview(o);
+                    } catch (e) {
+                        console.error('Admin load error:', e);
+                    } finally {
+                        setLoading(false);
+                    }
+                }
+                load();
+            }, []);
+
+            if (loading) return <div className="loading"><div className="spinner"></div>Loading admin data...</div>;
+
+            return (
+                <div>
+                    {/* System Overview */}
+                    {overview && (
+                        <div className="card">
+                            <div className="card-title" style={{marginBottom: 16}}>📊 System Security Overview</div>
+                            <div className="access-stats" style={{marginBottom: 0}}>
+                                <div className="stat-item">
+                                    <div className="stat-value" style={{color: '#22c55e'}}>{overview.records_by_classification?.UNCLASSIFIED || 0}</div>
+                                    <div className="stat-label">Unclassified Records</div>
+                                </div>
+                                <div className="stat-item">
+                                    <div className="stat-value" style={{color: '#3b82f6'}}>{overview.records_by_classification?.CONFIDENTIAL || 0}</div>
+                                    <div className="stat-label">Confidential</div>
+                                </div>
+                                <div className="stat-item">
+                                    <div className="stat-value" style={{color: '#ef4444'}}>{overview.records_by_classification?.SECRET || 0}</div>
+                                    <div className="stat-label">Secret</div>
+                                </div>
+                                <div className="stat-item">
+                                    <div className="stat-value" style={{color: '#f59e0b'}}>{overview.records_by_classification?.TOP_SECRET || 0}</div>
+                                    <div className="stat-label">Top Secret</div>
+                                </div>
+                                <div className="stat-item">
+                                    <div className="stat-value" style={{color: '#ef4444'}}>{overview.total_access_denials || 0}</div>
+                                    <div className="stat-label">Access Denials</div>
+                                </div>
+                                <div className="stat-item">
+                                    <div className="stat-value" style={{color: '#a78bfa'}}>{overview.active_ntk_approvals || 0}</div>
+                                    <div className="stat-label">Active NTK Approvals</div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Users Table */}
+                    <div className="card">
+                        <div className="card-title" style={{marginBottom: 16}}>👤 Users & Security Clearances</div>
+                        <div style={{overflowX: 'auto'}}>
+                            <table className="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Username</th>
+                                        <th>Organization</th>
+                                        <th>Clearance</th>
+                                        <th>Roles</th>
+                                        <th>Compartments</th>
+                                        <th>Status</th>
+                                        <th>Last Login</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {users.map(u => (
+                                        <tr key={u.id}>
+                                            <td><strong>{u.username}</strong><br/><span style={{color: '#64748b', fontSize: 11}}>{u.email}</span></td>
+                                            <td>{u.organization}</td>
+                                            <td><ClassBadge level={u.clearance_level} /></td>
+                                            <td>{u.roles?.map(r => <RoleBadge key={r} role={r} />)}</td>
+                                            <td className="cell-compartments">
+                                                {u.approved_compartments?.map(c => <span key={c} className="compartment-tag">{c}</span>)}
+                                                {(!u.approved_compartments || u.approved_compartments.length === 0) && <span style={{color: '#64748b', fontSize: 11}}>None</span>}
+                                            </td>
+                                            <td style={{color: u.is_active ? '#22c55e' : '#ef4444'}}>{u.is_active ? '● Active' : '○ Inactive'}</td>
+                                            <td style={{color: '#64748b', fontSize: 11}}>{u.last_login ? new Date(u.last_login).toLocaleString() : 'Never'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {/* Need-to-Know Approvals */}
+                    <div className="card">
+                        <div className="card-title" style={{marginBottom: 16}}>🔑 Need-to-Know Approvals</div>
+                        <div style={{overflowX: 'auto'}}>
+                            <table className="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>User</th>
+                                        <th>Compartment</th>
+                                        <th>Approved By</th>
+                                        <th>Date</th>
+                                        <th>Expires</th>
+                                        <th>Status</th>
+                                        <th>Reason</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {approvals.map(a => (
+                                        <tr key={a.id}>
+                                            <td><strong>{a.username}</strong></td>
+                                            <td><span className="compartment-tag">{a.compartment}</span></td>
+                                            <td>{a.approved_by}</td>
+                                            <td style={{fontSize: 11, color: '#64748b'}}>{a.approved_at ? new Date(a.approved_at).toLocaleString() : '-'}</td>
+                                            <td style={{fontSize: 11, color: '#64748b'}}>{a.expires_at ? new Date(a.expires_at).toLocaleString() : 'Never'}</td>
+                                            <td style={{color: a.status === 'ACTIVE' ? '#22c55e' : '#ef4444'}}>{a.status}</td>
+                                            <td style={{fontSize: 12, color: '#94a3b8'}}>{a.reason}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ─── Audit View ────────────────────────────────────────────────
+        function AuditView({ user }) {
+            const [logs, setLogs] = useState([]);
+            const [stats, setStats] = useState(null);
+            const [total, setTotal] = useState(0);
+            const [loading, setLoading] = useState(true);
+            const [filters, setFilters] = useState({ action: '', username: '', was_allowed: '', hours: 168 });
+
+            const fetchLogs = useCallback(async () => {
+                setLoading(true);
+                try {
+                    const params = new URLSearchParams({ hours: filters.hours, limit: 200 });
+                    if (filters.action) params.set('action', filters.action);
+                    if (filters.username) params.set('username', filters.username);
+                    if (filters.was_allowed !== '') params.set('was_allowed', filters.was_allowed);
+
+                    const [logsData, statsData] = await Promise.all([
+                        apiCall(`/api/audit/logs?${params}`),
+                        apiCall(`/api/audit/stats?hours=${filters.hours}`),
+                    ]);
+                    setLogs(logsData.logs || []);
+                    setTotal(logsData.total || 0);
+                    setStats(statsData);
+                } catch (e) {
+                    console.error('Audit load error:', e);
+                } finally {
+                    setLoading(false);
+                }
+            }, [filters]);
+
+            useEffect(() => { fetchLogs(); }, [fetchLogs]);
+
+            return (
+                <div>
+                    {/* Audit Stats */}
+                    {stats && (
+                        <div className="card">
+                            <div className="card-title" style={{marginBottom: 16}}>📈 Audit Statistics (Last {filters.hours}h)</div>
+                            <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 16}}>
+                                <div>
+                                    <h4 style={{fontSize: 12, color: '#64748b', marginBottom: 8}}>Actions Breakdown</h4>
+                                    {Object.entries(stats.actions_breakdown || {}).map(([action, count]) => (
+                                        <div key={action} style={{display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13}}>
+                                            <span className="mono" style={{color: action.includes('DENIED') ? '#ef4444' : '#94a3b8'}}>{action}</span>
+                                            <strong>{count}</strong>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div>
+                                    <h4 style={{fontSize: 12, color: '#64748b', marginBottom: 8}}>Activity by User</h4>
+                                    {Object.entries(stats.activity_by_user || {}).map(([u, count]) => (
+                                        <div key={u} style={{display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13}}>
+                                            <span>{u}</span>
+                                            <strong>{count}</strong>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div>
+                                    <h4 style={{fontSize: 12, color: '#ef4444', marginBottom: 8}}>Denials by User</h4>
+                                    {Object.entries(stats.denials_by_user || {}).length === 0
+                                        ? <span style={{color: '#64748b', fontSize: 12}}>No denials in this period</span>
+                                        : Object.entries(stats.denials_by_user || {}).map(([u, count]) => (
+                                            <div key={u} style={{display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13}}>
+                                                <span style={{color: '#fca5a5'}}>{u}</span>
+                                                <strong style={{color: '#ef4444'}}>{count}</strong>
+                                            </div>
+                                        ))
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Filters */}
+                    <div className="filter-bar">
+                        <select value={filters.action} onChange={e => setFilters(f => ({...f, action: e.target.value}))}>
+                            <option value="">All Actions</option>
+                            <option value="READ_CELL">Read Cell</option>
+                            <option value="CELL_ACCESS_DENIED">Cell Denied</option>
+                            <option value="READ_RECORD">Read Record</option>
+                            <option value="ACCESS_DENIED">Access Denied</option>
+                            <option value="CREATE">Create</option>
+                            <option value="UPDATE">Update</option>
+                            <option value="DELETE">Delete</option>
+                            <option value="LIST_RECORDS">List Records</option>
+                            <option value="GRANT_NTK">Grant NTK</option>
+                            <option value="REVOKE_NTK">Revoke NTK</option>
+                        </select>
+                        <input placeholder="Username..." value={filters.username}
+                            onChange={e => setFilters(f => ({...f, username: e.target.value}))} />
+                        <select value={filters.was_allowed} onChange={e => setFilters(f => ({...f, was_allowed: e.target.value}))}>
+                            <option value="">All Results</option>
+                            <option value="true">Allowed</option>
+                            <option value="false">Denied</option>
+                        </select>
+                        <select value={filters.hours} onChange={e => setFilters(f => ({...f, hours: parseInt(e.target.value)}))}>
+                            <option value="1">Last 1h</option>
+                            <option value="24">Last 24h</option>
+                            <option value="168">Last 7d</option>
+                            <option value="720">Last 30d</option>
+                        </select>
+                        <button className="btn btn-ghost btn-sm" onClick={fetchLogs}>🔄 Refresh</button>
+                        <span style={{color: '#64748b', fontSize: 12, marginLeft: 8}}>{total} events</span>
+                    </div>
+
+                    {/* Logs Table */}
+                    <div className="card" style={{padding: 0, overflow: 'hidden'}}>
+                        {loading ? (
+                            <div className="loading"><div className="spinner"></div>Loading audit logs...</div>
+                        ) : (
+                            <div style={{overflowX: 'auto'}}>
+                                <table className="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Timestamp</th>
+                                            <th>User</th>
+                                            <th>Action</th>
+                                            <th>Record</th>
+                                            <th>Field</th>
+                                            <th>Classification</th>
+                                            <th>Result</th>
+                                            <th>Details</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {logs.map(log => (
+                                            <tr key={log.id} className={!log.was_allowed ? 'denied' : ''}>
+                                                <td style={{fontSize: 11, color: '#64748b', whiteSpace: 'nowrap'}} className="mono">
+                                                    {log.timestamp ? new Date(log.timestamp).toLocaleString() : '-'}
+                                                </td>
+                                                <td>
+                                                    <strong>{log.username}</strong>
+                                                    <br/><span style={{fontSize: 10, color: '#64748b'}}>{log.organization}</span>
+                                                </td>
+                                                <td><span className="mono" style={{fontSize: 11, color: log.action?.includes('DENIED') ? '#ef4444' : '#94a3b8'}}>{log.action}</span></td>
+                                                <td style={{fontSize: 12, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis'}}>{log.record_title || '-'}</td>
+                                                <td className="mono" style={{fontSize: 11}}>{log.field_name || '-'}</td>
+                                                <td>{log.classification_required ? <ClassBadge level={log.classification_required} /> : '-'}</td>
+                                                <td style={{color: log.was_allowed ? '#22c55e' : '#ef4444', fontWeight: 600, fontSize: 12}}>
+                                                    {log.was_allowed ? '✓ ALLOWED' : '✗ DENIED'}
+                                                </td>
+                                                <td style={{fontSize: 11, color: '#fca5a5', maxWidth: 200}}>{log.denial_reason || ''}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        // ─── User Profile Sidebar ──────────────────────────────────────
+        function UserProfile({ user }) {
+            if (!user) return null;
+            return (
+                <div className="card">
+                    <div className="card-title" style={{marginBottom: 16}}>🛡️ Your Security Profile</div>
+                    <div style={{display: 'grid', gap: 12, fontSize: 13}}>
+                        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                            <span style={{color: '#64748b'}}>Identity</span>
+                            <strong>{user.username}</strong>
+                        </div>
+                        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                            <span style={{color: '#64748b'}}>Organization</span>
+                            <span>{user.organization}</span>
+                        </div>
+                        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                            <span style={{color: '#64748b'}}>Clearance</span>
+                            <ClassBadge level={user.clearance_level} />
+                        </div>
+                        <div>
+                            <span style={{color: '#64748b', display: 'block', marginBottom: 6}}>Roles</span>
+                            <div>{user.roles?.map(r => <RoleBadge key={r} role={r} />)}</div>
+                        </div>
+                        <div>
+                            <span style={{color: '#64748b', display: 'block', marginBottom: 6}}>Need-to-Know Compartments</span>
+                            <div className="cell-compartments">
+                                {user.compartments?.length > 0
+                                    ? user.compartments.map(c => <span key={c} className="compartment-tag">{c}</span>)
+                                    : <span style={{color: '#ef4444', fontSize: 11}}>No compartment access</span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ─── Main App ──────────────────────────────────────────────────
+        function App() {
+            const [authenticated, setAuthenticated] = useState(false);
+            const [user, setUser] = useState(null);
+            const [activeTab, setActiveTab] = useState('records');
+            const [kcReady, setKcReady] = useState(false);
+
+            useEffect(() => {
+                initKeycloak().then(async ({ authenticated: auth, keycloak: kc }) => {
+                    setAuthenticated(auth);
+                    setKcReady(true);
+
+                    if (auth && kc?.token) {
+                        try {
+                            const me = await apiCall('/api/auth/me');
+                            setUser(me);
+                        } catch (e) {
+                            console.error('Failed to fetch user info:', e);
+                        }
+                    }
+                });
+            }, []);
+
+            if (!kcReady) {
+                return (
+                    <div className="login-screen">
+                        <div className="spinner" style={{width: 40, height: 40}}></div>
+                        <div style={{color: '#64748b'}}>Connecting to Identity Provider...</div>
+                    </div>
+                );
+            }
+
+            if (!authenticated) {
+                return <LoginScreen />;
+            }
+
+            const canViewAdmin = user?.roles?.some(r => ['admin', 'manager'].includes(r));
+            const canViewAudit = user?.roles?.some(r => ['admin', 'auditor'].includes(r));
+
+            return (
+                <div>
+                    {/* Header */}
+                    <header className="app-header">
+                        <h1>🔐 <span>Classified</span> Data Access System</h1>
+                        <div className="user-panel">
+                            <ClassBadge level={user?.clearance_level} />
+                            <div>
+                                <div className="username">{user?.username || 'Loading...'}</div>
+                                <div className="org">{user?.organization}</div>
+                            </div>
+                            <button className="btn btn-ghost btn-sm"
+                                onClick={() => keycloakInstance?.logout({ redirectUri: window.location.origin })}>
+                                Logout
+                            </button>
+                        </div>
+                    </header>
+
+                    {/* Navigation */}
+                    <nav className="nav-tabs">
+                        <div className={`nav-tab ${activeTab === 'records' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('records')}>
+                            📋 Records
+                        </div>
+                        <div className={`nav-tab ${activeTab === 'profile' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('profile')}>
+                            🛡️ Security Profile
+                        </div>
+                        {canViewAdmin && (
+                            <div className={`nav-tab ${activeTab === 'admin' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('admin')}>
+                                ⚙️ Admin
+                            </div>
+                        )}
+                        {canViewAudit && (
+                            <div className={`nav-tab ${activeTab === 'audit' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('audit')}>
+                                📊 Audit Log
+                            </div>
+                        )}
+                    </nav>
+
+                    {/* Content */}
+                    <div className="main-content">
+                        {activeTab === 'records' && <RecordsView user={user} />}
+                        {activeTab === 'profile' && <UserProfile user={user} />}
+                        {activeTab === 'admin' && canViewAdmin && <AdminView user={user} />}
+                        {activeTab === 'audit' && canViewAudit && <AuditView user={user} />}
+                        {activeTab === 'admin' && !canViewAdmin && (
+                            <div className="card" style={{textAlign: 'center', color: '#ef4444', padding: 48}}>
+                                🚫 Access Denied — Admin or Manager role required
+                            </div>
+                        )}
+                        {activeTab === 'audit' && !canViewAudit && (
+                            <div className="card" style={{textAlign: 'center', color: '#ef4444', padding: 48}}>
+                                🚫 Access Denied — Auditor or Admin role required
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        // ─── Mount ─────────────────────────────────────────────────────
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

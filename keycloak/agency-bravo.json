@@ -1,0 +1,133 @@
+{
+  "realm": "agency-bravo",
+  "enabled": true,
+  "displayName": "Agency Bravo",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "sslRequired": "none",
+  "accessTokenLifespan": 1800,
+  "roles": {
+    "realm": [
+      { "name": "viewer", "description": "Can view authorized data" },
+      { "name": "analyst", "description": "Can analyze data within clearance" },
+      { "name": "manager", "description": "Can manage records" },
+      { "name": "admin", "description": "Full administration" }
+    ]
+  },
+  "clientScopes": [
+    {
+      "name": "security-attributes",
+      "description": "Maps security clearance attributes to token claims",
+      "protocol": "openid-connect",
+      "attributes": { "include.in.token.scope": "true" },
+      "protocolMappers": [
+        {
+          "name": "clearance_level",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "clearance_level",
+            "claim.name": "clearance_level",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "compartments",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "compartments",
+            "claim.name": "compartments",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "organization",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "organization",
+            "claim.name": "organization",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    }
+  ],
+  "defaultDefaultClientScopes": [
+    "web-origins",
+    "acr",
+    "profile",
+    "roles",
+    "email",
+    "security-attributes"
+  ],
+  "clients": [
+    {
+      "clientId": "alpha-federation",
+      "name": "Federation Client for Agency Alpha",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "federation-secret-key",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:8080/*",
+        "http://keycloak-alpha:8080/*"
+      ],
+      "webOrigins": ["*"],
+      "protocol": "openid-connect",
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "roles",
+        "email",
+        "security-attributes"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "frank_bravo",
+      "enabled": true,
+      "email": "frank@bravo.gov",
+      "firstName": "Frank",
+      "lastName": "Bravo-Analyst",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["analyst"],
+      "attributes": {
+        "clearance_level": ["SECRET"],
+        "compartments": ["PROJECT_ALPHA"],
+        "organization": ["Agency Bravo"]
+      }
+    },
+    {
+      "username": "grace_bravo",
+      "enabled": true,
+      "email": "grace@bravo.gov",
+      "firstName": "Grace",
+      "lastName": "Bravo-Viewer",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["viewer"],
+      "attributes": {
+        "clearance_level": ["CONFIDENTIAL"],
+        "compartments": [""],
+        "organization": ["Agency Bravo"]
+      }
+    }
+  ]
+}

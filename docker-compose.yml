@@ -1,0 +1,160 @@
+###############################################################################
+# RBAC + Cell-Level Security Demo with Federated Keycloak
+# Run: docker-compose up --build
+###############################################################################
+
+services:
+  # ─── PostgreSQL for Keycloak Alpha ────────────────────────────────────
+  postgres-alpha:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak
+    volumes:
+      - pg_alpha_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ─── PostgreSQL for Keycloak Bravo ────────────────────────────────────
+  postgres-bravo:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak
+    volumes:
+      - pg_bravo_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ─── PostgreSQL for Application Data ──────────────────────────────────
+  postgres-app:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: securedata
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: apppass
+    volumes:
+      - pg_app_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d securedata"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ─── Keycloak Alpha (Primary Organization) ───────────────────────────
+  keycloak-alpha:
+    image: quay.io/keycloak/keycloak:latest
+    command: start-dev --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres-alpha:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak/agency-alpha.json:/opt/keycloak/data/import/agency-alpha.json
+    depends_on:
+      postgres-alpha:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "echo"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  # ─── Keycloak Bravo (Federated Partner Organization) ─────────────────
+  keycloak-bravo:
+    image: quay.io/keycloak/keycloak:latest
+    command: start-dev --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres-bravo:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./keycloak/agency-bravo.json:/opt/keycloak/data/import/agency-bravo.json
+    depends_on:
+      postgres-bravo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "echo"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  # ─── Federation & Data Setup (runs once after Keycloaks ready) ───────
+  setup:
+    build: ./setup
+    environment:
+      ALPHA_URL: http://keycloak-alpha:8080
+      BRAVO_URL: http://keycloak-bravo:8080
+      BRAVO_EXTERNAL_URL: http://localhost:8081
+      ADMIN_USER: admin
+      ADMIN_PASS: admin
+      APP_DB_HOST: postgres-app
+      APP_DB_PORT: "5432"
+      APP_DB_NAME: securedata
+      APP_DB_USER: appuser
+      APP_DB_PASS: apppass
+    depends_on:
+      keycloak-alpha:
+        condition: service_healthy
+      keycloak-bravo:
+        condition: service_healthy
+      postgres-app:
+        condition: service_healthy
+
+  # ─── Backend API (FastAPI) ───────────────────────────────────────────
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://appuser:apppass@postgres-app:5432/securedata
+      DATABASE_URL_SYNC: postgresql://appuser:apppass@postgres-app:5432/securedata
+      KEYCLOAK_URL: http://keycloak-alpha:8080
+      KEYCLOAK_REALM: agency-alpha
+      KEYCLOAK_CLIENT_ID: backend-api
+      CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres-app:
+        condition: service_healthy
+      keycloak-alpha:
+        condition: service_healthy
+
+  # ─── Frontend (React SPA via Nginx) ──────────────────────────────────
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  pg_alpha_data:
+  pg_bravo_data:
+  pg_app_data:
