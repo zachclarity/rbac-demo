@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenSearch Security Demo — RBAC &amp; Cell-Level</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ── Reset & Base ───────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-primary:    #0a0e17;
+  --bg-secondary:  #111827;
+  --bg-card:       #1a2234;
+  --bg-card-hover: #1f2b42;
+  --border:        #2a3654;
+  --border-active: #4a6fa5;
+  --text-primary:  #e2e8f0;
+  --text-secondary:#94a3b8;
+  --text-muted:    #64748b;
+  --accent:        #38bdf8;
+  --accent-dim:    #0c4a6e;
+
+  --cls-unclassified: #22c55e;
+  --cls-confidential: #3b82f6;
+  --cls-secret:       #f59e0b;
+  --cls-top-secret:   #ef4444;
+  --redacted-bg:      #7f1d1d;
+  --redacted-text:    #fca5a5;
+
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-sans: 'Inter', system-ui, sans-serif;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* ── Layout ─────────────────────────────────────────────────── */
+.app-shell {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 20px 24px 60px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 0 24px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 24px;
+}
+header .logo {
+  width: 40px; height: 40px;
+  background: linear-gradient(135deg, var(--accent), #6366f1);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; font-weight: 700; color: #fff;
+}
+header h1 {
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+header h1 span { color: var(--accent); }
+header .subtitle {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-left: auto;
+  font-family: var(--font-mono);
+}
+
+/* ── Controls Row ───────────────────────────────────────────── */
+.controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.control-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px;
+}
+.control-card h3 {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+/* User selector */
+.user-select {
+  width: 100%;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.user-select:focus { border-color: var(--accent); }
+
+.user-context {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 8px;
+}
+.ctx-item {
+  font-size: 0.78rem;
+  font-family: var(--font-mono);
+}
+.ctx-label {
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  display: block;
+  margin-bottom: 2px;
+}
+.ctx-value { color: var(--text-primary); }
+
+/* Mode toggle */
+.mode-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 14px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.mode-tab {
+  flex: 1;
+  padding: 10px 16px;
+  background: var(--bg-secondary);
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+.mode-tab.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+.mode-tab:hover:not(.active) {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+}
+
+.mode-description {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  min-height: 36px;
+}
+
+/* ── Search Bar ─────────────────────────────────────────────── */
+.search-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.search-input {
+  flex: 1;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  font-family: var(--font-sans);
+  outline: none;
+  transition: border-color 0.2s;
+}
+.search-input:focus { border-color: var(--accent); }
+.search-input::placeholder { color: var(--text-muted); }
+
+.btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-primary {
+  background: var(--accent);
+  color: #0a0e17;
+}
+.btn-primary:hover { filter: brightness(1.15); }
+.btn-secondary {
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+.btn-secondary:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+.btn-danger {
+  background: transparent;
+  color: var(--cls-top-secret);
+  border: 1px solid #7f1d1d;
+  font-size: 0.75rem;
+  padding: 8px 14px;
+}
+.btn-danger:hover { background: #7f1d1d22; }
+
+/* ── Results Header ─────────────────────────────────────────── */
+.results-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.results-header h2 {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.results-header h2 .count { color: var(--accent); }
+.results-header h2 .total { color: var(--text-muted); }
+
+.filter-explanation {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 14px;
+  margin-bottom: 16px;
+}
+.filter-explanation::before { content: "⛛ ACTIVE FILTERS  "; color: var(--accent); font-weight: 700; }
+
+/* ── Document Cards ─────────────────────────────────────────── */
+.doc-grid { display: flex; flex-direction: column; gap: 10px; }
+
+.doc-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px;
+  transition: border-color 0.2s;
+}
+.doc-card:hover { border-color: var(--border-active); }
+
+.doc-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.doc-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  flex: 1;
+  min-width: 200px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.badge-UNCLASSIFIED { background: #22c55e1a; color: var(--cls-unclassified); border: 1px solid #22c55e44; }
+.badge-CONFIDENTIAL { background: #3b82f61a; color: var(--cls-confidential); border: 1px solid #3b82f644; }
+.badge-SECRET       { background: #f59e0b1a; color: var(--cls-secret);       border: 1px solid #f59e0b44; }
+.badge-TOP_SECRET   { background: #ef44441a; color: var(--cls-top-secret);   border: 1px solid #ef444444; }
+
+.badge-org {
+  background: #6366f11a;
+  color: #a5b4fc;
+  border: 1px solid #6366f144;
+}
+.badge-cell {
+  background: #0e7490aa;
+  color: #67e8f9;
+  border: 1px solid #0e749044;
+  font-size: 0.6rem;
+}
+
+.doc-content {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+  line-height: 1.55;
+}
+
+.doc-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.doc-field {
+  font-size: 0.78rem;
+  font-family: var(--font-mono);
+}
+.field-label {
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  display: block;
+}
+.field-value { color: var(--text-secondary); word-break: break-word; }
+.field-value.redacted {
+  background: var(--redacted-bg);
+  color: var(--redacted-text);
+  padding: 2px 8px;
+  border-radius: 3px;
+  display: inline-block;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+/* ── Upload Panel ───────────────────────────────────────────── */
+.upload-toggle {
+  margin-top: 24px;
+  margin-bottom: 10px;
+}
+.upload-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  display: none;
+}
+.upload-panel.open { display: block; }
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.form-group { display: flex; flex-direction: column; gap: 4px; }
+.form-group.full { grid-column: 1 / -1; }
+.form-group label {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+.form-group input,
+.form-group select,
+.form-group textarea {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 9px 12px;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus { border-color: var(--accent); }
+.form-group textarea { resize: vertical; min-height: 70px; }
+.upload-actions { margin-top: 14px; display: flex; gap: 10px; justify-content: flex-end; }
+
+/* ── Compare View ───────────────────────────────────────────── */
+.compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.compare-col h3 {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--border);
+}
+.compare-col h3 .count { font-weight: 400; color: var(--text-muted); }
+.compare-col.rbac h3 { border-color: var(--cls-confidential); color: var(--cls-confidential); }
+.compare-col.cell h3 { border-color: var(--cls-secret); color: var(--cls-secret); }
+
+/* ── Loading & Empty ────────────────────────────────────────── */
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.loading::after { content: ""; animation: dots 1.4s infinite; }
+@keyframes dots {
+  0%, 20% { content: "."; }
+  40% { content: ".."; }
+  60%, 100% { content: "..."; }
+}
+.empty-state {
+  text-align: center;
+  padding: 50px 20px;
+  color: var(--text-muted);
+}
+.empty-state .icon { font-size: 2.5rem; margin-bottom: 12px; }
+.empty-state p { font-size: 0.85rem; }
+
+/* ── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 800px) {
+  .controls { grid-template-columns: 1fr; }
+  .compare-grid { grid-template-columns: 1fr; }
+  .form-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <!-- ── Header ──────────────────────────────────────────────── -->
+  <header>
+    <div class="logo">⛨</div>
+    <h1><span>OpenSearch</span> Security Demo</h1>
+    <span class="subtitle">RBAC &amp; Cell-Level Query Modes</span>
+  </header>
+
+  <!-- ── Controls ────────────────────────────────────────────── -->
+  <div class="controls">
+    <div class="control-card">
+      <h3>Active Identity</h3>
+      <select class="user-select" id="userSelect"></select>
+      <div class="user-context" id="userContext"></div>
+    </div>
+    <div class="control-card">
+      <h3>Security Mode</h3>
+      <div class="mode-tabs" id="modeTabs">
+        <button class="mode-tab active" data-mode="rbac">RBAC</button>
+        <button class="mode-tab" data-mode="cell">Cell-Level</button>
+        <button class="mode-tab" data-mode="compare">Compare ↔</button>
+      </div>
+      <div class="mode-description" id="modeDesc">
+        Filters by classification clearance and organisation membership. All visible fields shown in full.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Search Bar ──────────────────────────────────────────── -->
+  <div class="search-row">
+    <input type="text" class="search-input" id="searchInput" placeholder="Search documents… (leave empty to browse all)">
+    <button class="btn btn-primary" id="searchBtn">Search</button>
+    <button class="btn btn-danger" id="resetBtn" title="Reset index to seed data">Reset</button>
+  </div>
+
+  <!-- ── Filter Explanation ──────────────────────────────────── -->
+  <div class="filter-explanation" id="filterExplanation" style="display:none;"></div>
+
+  <!-- ── Results ─────────────────────────────────────────────── -->
+  <div class="results-header" id="resultsHeader" style="display:none;">
+    <h2 id="resultsSummary"></h2>
+  </div>
+  <div id="resultsContainer"></div>
+
+  <!-- ── Upload Panel ────────────────────────────────────────── -->
+  <div class="upload-toggle">
+    <button class="btn btn-secondary" id="uploadToggle">＋ Upload Document</button>
+  </div>
+  <div class="upload-panel" id="uploadPanel">
+    <div class="form-grid">
+      <div class="form-group full"><label>Title</label><input id="upTitle" placeholder="Document title"></div>
+      <div class="form-group full"><label>Content</label><textarea id="upContent" placeholder="Document body text"></textarea></div>
+      <div class="form-group"><label>Author</label><input id="upAuthor" placeholder="Author name"></div>
+      <div class="form-group">
+        <label>Classification</label>
+        <select id="upClass">
+          <option value="UNCLASSIFIED">UNCLASSIFIED</option>
+          <option value="CONFIDENTIAL">CONFIDENTIAL</option>
+          <option value="SECRET">SECRET</option>
+          <option value="TOP_SECRET">TOP SECRET</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Organisation</label>
+        <select id="upOrg">
+          <option value="agency-alpha">agency-alpha</option>
+          <option value="agency-bravo">agency-bravo</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Department</label><input id="upDept" placeholder="e.g. operations, analysis"></div>
+      <div class="form-group"><label>Cell Access (comma separated)</label><input id="upCells" placeholder="e.g. cell-east,cell-hq  or  all"></div>
+      <div class="form-group"><label>Shared With (comma separated)</label><input id="upShared" placeholder="e.g. agency-bravo  or  all"></div>
+      <div class="form-group"><label>Source Name</label><input id="upSource" placeholder="HUMINT Source ECHO-7"></div>
+      <div class="form-group"><label>Handler ID</label><input id="upHandler" placeholder="H-4472"></div>
+      <div class="form-group full"><label>Raw Intel</label><textarea id="upRawIntel" placeholder="Raw intelligence data (sensitive — will be subject to cell masking)"></textarea></div>
+      <div class="form-group"><label>Location</label><input id="upLocation" placeholder="Eastern District"></div>
+    </div>
+    <div class="upload-actions">
+      <button class="btn btn-secondary" id="uploadCancel">Cancel</button>
+      <button class="btn btn-primary" id="uploadSubmit">Upload &amp; Index</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════════
+const API = '';  // same origin
+let currentMode = 'rbac';
+let users = {};
+let currentUser = null;
+
+const MODE_DESCRIPTIONS = {
+  rbac: 'Filters by classification clearance and organisation membership. All visible fields shown in full.',
+  cell: 'Applies RBAC filters PLUS cell-compartment restrictions. Sensitive fields (source, handler, raw intel) are redacted unless you have matching cell membership.',
+  compare: 'Runs the same query under both RBAC and Cell-Level modes side by side so you can see exactly what additional restrictions cell-level security adds.',
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadUsers();
+  bindEvents();
+  doSearch();
+});
+
+async function loadUsers() {
+  const res = await fetch(`${API}/api/users`);
+  users = await res.json();
+  const sel = document.getElementById('userSelect');
+  sel.innerHTML = '';
+  for (const [id, u] of Object.entries(users)) {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = `${u.name}  —  ${u.description}`;
+    sel.appendChild(opt);
+  }
+  currentUser = Object.keys(users)[0];
+  sel.value = currentUser;
+  renderUserContext();
+}
+
+function renderUserContext() {
+  const u = users[currentUser];
+  if (!u) return;
+  const ctx = document.getElementById('userContext');
+  const cells = u.cell_memberships.length ? u.cell_memberships.join(', ') : '(none)';
+  ctx.innerHTML = `
+    <div class="ctx-item"><span class="ctx-label">Organisation</span><span class="ctx-value">${u.organization}</span></div>
+    <div class="ctx-item"><span class="ctx-label">Clearance</span><span class="ctx-value">${u.clearance}</span></div>
+    <div class="ctx-item"><span class="ctx-label">Roles</span><span class="ctx-value">${u.roles.join(', ')}</span></div>
+    <div class="ctx-item"><span class="ctx-label">Cells</span><span class="ctx-value">${cells}</span></div>
+  `;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EVENTS
+// ═══════════════════════════════════════════════════════════════════
+function bindEvents() {
+  document.getElementById('userSelect').addEventListener('change', e => {
+    currentUser = e.target.value;
+    renderUserContext();
+    doSearch();
+  });
+
+  document.querySelectorAll('.mode-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.mode-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentMode = btn.dataset.mode;
+      document.getElementById('modeDesc').textContent = MODE_DESCRIPTIONS[currentMode];
+      doSearch();
+    });
+  });
+
+  document.getElementById('searchBtn').addEventListener('click', doSearch);
+  document.getElementById('searchInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doSearch();
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', async () => {
+    if (!confirm('Reset index to original seed data?')) return;
+    await fetch(`${API}/api/reset`, { method: 'POST' });
+    doSearch();
+  });
+
+  document.getElementById('uploadToggle').addEventListener('click', () => {
+    document.getElementById('uploadPanel').classList.toggle('open');
+  });
+  document.getElementById('uploadCancel').addEventListener('click', () => {
+    document.getElementById('uploadPanel').classList.remove('open');
+  });
+  document.getElementById('uploadSubmit').addEventListener('click', uploadDocument);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SEARCH
+// ═══════════════════════════════════════════════════════════════════
+async function doSearch() {
+  const query = document.getElementById('searchInput').value;
+  const container = document.getElementById('resultsContainer');
+  container.innerHTML = '<div class="loading">Searching</div>';
+
+  if (currentMode === 'compare') {
+    await doCompare(query);
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API}/api/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, user_id: currentUser, mode: currentMode }),
+    });
+    const data = await res.json();
+    renderResults(data);
+  } catch (err) {
+    container.innerHTML = `<div class="empty-state"><div class="icon">⚠</div><p>Error: ${err.message}</p></div>`;
+  }
+}
+
+async function doCompare(query) {
+  const container = document.getElementById('resultsContainer');
+  try {
+    const res = await fetch(`${API}/api/compare`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, user_id: currentUser }),
+    });
+    const data = await res.json();
+    renderCompare(data);
+  } catch (err) {
+    container.innerHTML = `<div class="empty-state"><div class="icon">⚠</div><p>Error: ${err.message}</p></div>`;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// RENDER — SINGLE MODE
+// ═══════════════════════════════════════════════════════════════════
+function renderResults(data) {
+  const header = document.getElementById('resultsHeader');
+  const summary = document.getElementById('resultsSummary');
+  const filter = document.getElementById('filterExplanation');
+  const container = document.getElementById('resultsContainer');
+
+  header.style.display = 'flex';
+  filter.style.display = 'block';
+  filter.textContent = data.filter_explanation;
+
+  summary.innerHTML = `<span class="count">${data.visible_count}</span> visible  /  <span class="total">${data.total_in_index} total  (${data.hidden_count} hidden)</span>`;
+
+  if (!data.documents.length) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">🔒</div><p>No documents match your current security context.</p></div>';
+    return;
+  }
+
+  container.innerHTML = '<div class="doc-grid">' + data.documents.map(renderDocCard).join('') + '</div>';
+}
+
+function renderDocCard(doc) {
+  const cells = (doc.cell_access || []).filter(c => c !== 'all');
+  const cellBadges = cells.map(c => `<span class="badge badge-cell">${esc(c)}</span>`).join('');
+  const allBadge = (doc.cell_access || []).includes('all') ? '<span class="badge badge-cell">all</span>' : '';
+
+  const sensitiveFields = ['source_name', 'handler_id', 'raw_intel'];
+  const fieldAccess = doc._field_access || {};
+
+  let fieldsHTML = '';
+  const metaFields = [
+    ['Author', doc.author],
+    ['Department', doc.department],
+    ['Location', doc.location],
+    ['Date', doc.date_created],
+  ];
+  for (const [label, val] of metaFields) {
+    if (val) fieldsHTML += `<div class="doc-field"><span class="field-label">${label}</span><span class="field-value">${esc(val)}</span></div>`;
+  }
+  for (const field of sensitiveFields) {
+    const val = doc[field];
+    if (!val) continue;
+    const label = field.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const isRedacted = fieldAccess[field] === 'redacted';
+    fieldsHTML += `<div class="doc-field"><span class="field-label">${label}</span><span class="field-value${isRedacted ? ' redacted' : ''}">${esc(val)}</span></div>`;
+  }
+
+  return `
+    <div class="doc-card">
+      <div class="doc-header">
+        <span class="doc-title">${esc(doc.title)}</span>
+        <span class="badge badge-${doc.classification}">${doc.classification.replace('_', ' ')}</span>
+        <span class="badge badge-org">${esc(doc.organization)}</span>
+        ${allBadge}${cellBadges}
+      </div>
+      <div class="doc-content">${esc(doc.content)}</div>
+      <div class="doc-fields">${fieldsHTML}</div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// RENDER — COMPARE MODE
+// ═══════════════════════════════════════════════════════════════════
+function renderCompare(data) {
+  const header = document.getElementById('resultsHeader');
+  const summary = document.getElementById('resultsSummary');
+  const filter = document.getElementById('filterExplanation');
+  const container = document.getElementById('resultsContainer');
+
+  header.style.display = 'flex';
+  filter.style.display = 'block';
+  filter.textContent = `Comparing both security modes for ${data.user.name}  •  ${data.total_in_index} documents in index`;
+  summary.innerHTML = `RBAC: <span class="count">${data.rbac.visible}</span>  •  Cell-Level: <span class="count">${data.cell.visible}</span>  /  <span class="total">${data.total_in_index} total</span>`;
+
+  const rbacCards = data.rbac.documents.map(renderDocCard).join('') || '<div class="empty-state"><div class="icon">🔒</div><p>No documents visible</p></div>';
+  const cellCards = data.cell.documents.map(renderDocCard).join('') || '<div class="empty-state"><div class="icon">🔒</div><p>No documents visible</p></div>';
+
+  container.innerHTML = `
+    <div class="compare-grid">
+      <div class="compare-col rbac">
+        <h3>RBAC Mode <span class="count">(${data.rbac.visible} docs)</span></h3>
+        <div class="doc-grid">${rbacCards}</div>
+      </div>
+      <div class="compare-col cell">
+        <h3>Cell-Level Mode <span class="count">(${data.cell.visible} docs)</span></h3>
+        <div class="doc-grid">${cellCards}</div>
+      </div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// UPLOAD
+// ═══════════════════════════════════════════════════════════════════
+async function uploadDocument() {
+  const csvToArr = v => v ? v.split(',').map(s => s.trim()).filter(Boolean) : [];
+  const body = {
+    title:          document.getElementById('upTitle').value,
+    content:        document.getElementById('upContent').value,
+    author:         document.getElementById('upAuthor').value || 'Unknown',
+    classification: document.getElementById('upClass').value,
+    organization:   document.getElementById('upOrg').value,
+    department:     document.getElementById('upDept').value || 'general',
+    cell_access:    csvToArr(document.getElementById('upCells').value) || ['all'],
+    shared_with:    csvToArr(document.getElementById('upShared').value),
+    source_name:    document.getElementById('upSource').value,
+    handler_id:     document.getElementById('upHandler').value,
+    raw_intel:      document.getElementById('upRawIntel').value,
+    location:       document.getElementById('upLocation').value,
+  };
+  if (!body.title || !body.content) { alert('Title and Content are required.'); return; }
+
+  try {
+    const res = await fetch(`${API}/api/documents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    alert(`Document indexed with ID: ${data.id}`);
+    document.getElementById('uploadPanel').classList.remove('open');
+    doSearch();
+  } catch (err) {
+    alert(`Upload failed: ${err.message}`);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// UTIL
+// ═══════════════════════════════════════════════════════════════════
+function esc(str) {
+  if (!str) return '';
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+</script>
+</body>
+</html>

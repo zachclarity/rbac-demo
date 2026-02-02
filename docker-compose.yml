@@ -1,5 +1,5 @@
 ###############################################################################
-# RBAC + Cell-Level Security Demo with Federated Keycloak
+# RBAC + Cell-Level Security Demo with Federated Keycloak & OpenSearch
 # Run: docker-compose up --build
 ###############################################################################
 
@@ -156,7 +156,52 @@ services:
     depends_on:
       - backend
 
+  # ─── OpenSearch (Single-Node) ────────────────────────────────────────
+  opensearch:
+    image: opensearchproject/opensearch:latest
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=Admin_1234!
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # ─── OpenSearch Dashboards ───────────────────────────────────────────
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:latest
+    environment:
+      - OPENSEARCH_HOSTS=["http://opensearch:9200"]
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    ports:
+      - "5601:5601"
+    depends_on:
+      opensearch:
+        condition: service_healthy
+
+  # ─── Search App (RBAC & Cell-Level Security Demo) ────────────────────
+  search-app:
+    build: ./search-app
+    environment:
+      OPENSEARCH_HOST: opensearch
+      OPENSEARCH_PORT: "9200"
+      INDEX_NAME: secure-documents
+    ports:
+      - "8002:8000"
+    depends_on:
+      opensearch:
+        condition: service_healthy
+
 volumes:
   pg_alpha_data:
   pg_bravo_data:
   pg_app_data:
+  opensearch_data:
