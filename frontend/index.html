@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RBAC + Cell-Level Security Demo</title>
-    <script src="https://cdn.jsdelivr.net/npm/keycloak-js@latest/dist/keycloak.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/keycloak-js@24.0.0/dist/keycloak.min.js"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -213,6 +213,15 @@
         }
         .login-btn.alpha { background: var(--accent); color: white; }
         .login-btn.alpha:hover { background: #4f46e5; }
+        .login-btn.bravo { background: transparent; color: #f59e0b; border: 2px solid #f59e0b; }
+        .login-btn.bravo:hover { background: #f59e0b; color: #0f172a; }
+        .login-btn-divider {
+            display: flex; align-items: center; gap: 12px; margin: 12px 0;
+            color: #475569; font-size: 12px;
+        }
+        .login-btn-divider::before, .login-btn-divider::after {
+            content: ''; flex: 1; border-top: 1px solid #1e3050;
+        }
 
         /* Filter bar */
         .filter-bar {
@@ -314,12 +323,11 @@
 
                 kc.init({
                     onLoad: 'check-sso',
-                    // silentCheckSsoRedirectUri removed — file doesn't exist, causes silent hang
+                    // silentCheckSsoRedirectUri removed — file doesn't exist, causes hang
+                    enableLogging: true,
                     pkceMethod: 'S256',
                     checkLoginIframe: false,
-                    enableLogging: true,
                 }).then(authenticated => {
-                    console.log('[KC] Init success. Authenticated:', authenticated);
                     keycloakInstance = kc;
 
                     // Auto-refresh token
@@ -332,7 +340,6 @@
                     resolve({ authenticated, keycloak: kc });
                 }).catch(err => {
                     console.error('Keycloak init failed:', err);
-                    // Still set instance so login button can attempt redirect
                     keycloakInstance = kc;
                     resolve({ authenticated: false, keycloak: kc });
                 });
@@ -359,10 +366,21 @@
         // ─── Login Screen ──────────────────────────────────────────────
         function LoginScreen() {
             const [loading, setLoading] = useState(false);
+            const [loadingBravo, setLoadingBravo] = useState(false);
 
-            const login = () => {
+            const loginAlpha = () => {
                 setLoading(true);
                 keycloakInstance?.login({ redirectUri: window.location.origin });
+            };
+
+            const loginBravo = () => {
+                setLoadingBravo(true);
+                // kc_idp_hint tells Keycloak to skip its login page and redirect
+                // directly to the Bravo identity provider for federated login
+                keycloakInstance?.login({
+                    redirectUri: window.location.origin,
+                    idpHint: 'agency-bravo',
+                });
             };
 
             return (
@@ -371,18 +389,22 @@
                         <div style={{ fontSize: 40, marginBottom: 16 }}>🔐</div>
                         <h1>Classified Data Access System</h1>
                         <p>RBAC + Cell-Level Security with Federated OIDC Authentication</p>
-                        <button className="login-btn alpha" onClick={login} disabled={loading}>
-                            {loading ? 'Redirecting...' : 'Sign In via Keycloak'}
+                        <button className="login-btn alpha" onClick={loginAlpha} disabled={loading || loadingBravo}>
+                            {loading ? 'Redirecting...' : '🏛️ Sign In — Agency Alpha'}
+                        </button>
+                        <div className="login-btn-divider">or federated partner</div>
+                        <button className="login-btn bravo" onClick={loginBravo} disabled={loading || loadingBravo}>
+                            {loadingBravo ? 'Redirecting to Bravo...' : '🤝 Sign In — Agency Bravo (Federated)'}
                         </button>
                         <div style={{ marginTop: 24, fontSize: 12, color: '#64748b', lineHeight: 1.8 }}>
-                            <strong>Demo Accounts</strong> (password: <code className="mono">password</code>)<br/>
+                            <strong>Alpha Accounts</strong> (password: <code className="mono">password</code>)<br/>
                             <code className="mono" style={{color: '#f59e0b'}}>alice_admin</code> — TOP SECRET / All Compartments / Admin<br/>
                             <code className="mono" style={{color: '#ef4444'}}>bob_analyst</code> — SECRET / ALPHA+OMEGA / Analyst<br/>
                             <code className="mono" style={{color: '#3b82f6'}}>carol_viewer</code> — CONFIDENTIAL / ALPHA / Viewer<br/>
                             <code className="mono" style={{color: '#ef4444'}}>dave_manager</code> — SECRET / ALPHA+DELTA / Manager<br/>
                             <code className="mono" style={{color: '#f59e0b'}}>eve_auditor</code> — TOP SECRET / All / Auditor<br/>
                             <div style={{marginTop: 8, borderTop: '1px solid #1e3050', paddingTop: 8}}>
-                                <strong>Federated (Agency Bravo)</strong> — Click "Agency Bravo" on login page<br/>
+                                <strong>Bravo Accounts (Federated)</strong><br/>
                                 <code className="mono" style={{color: '#ef4444'}}>frank_bravo</code> — SECRET / ALPHA<br/>
                                 <code className="mono" style={{color: '#3b82f6'}}>grace_bravo</code> — CONFIDENTIAL / None
                             </div>
