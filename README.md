@@ -1,5 +1,8 @@
 # RBAC + Cell-Level Security Demo
 
+![Login Screen](https://github.com/zactonicsai/rbac-demo/blob/main/rbacdemo.png)
+
+
 ## Federated OIDC/OAuth2 with Classification Access & Need-to-Know Controls
 
 A complete, dockerized demonstration of enterprise-grade data security featuring:
