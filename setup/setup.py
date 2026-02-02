@@ -41,6 +41,83 @@ def get_admin_token(base_url):
     return resp.json()["access_token"]
 
 
+def create_auto_link_flow(headers):
+    """
+    Create an authentication flow that auto-creates and auto-links federated
+    users WITHOUT showing the 'Update Account Information' form.
+
+    Default 'first broker login' flow shows a form → confusing for users.
+    This custom flow silently creates/links the user.
+    """
+    flow_alias = "auto-link-first-login"
+
+    # Check if flow already exists
+    resp = requests.get(
+        f"{ALPHA_URL}/admin/realms/agency-alpha/authentication/flows",
+        headers=headers,
+    )
+    existing_flows = [f["alias"] for f in resp.json()]
+    if flow_alias in existing_flows:
+        print(f"    Auth flow '{flow_alias}' already exists. Skipping.")
+        return flow_alias
+
+    # Step 1: Create the top-level flow
+    resp = requests.post(
+        f"{ALPHA_URL}/admin/realms/agency-alpha/authentication/flows",
+        headers=headers,
+        json={
+            "alias": flow_alias,
+            "description": "Auto-create and link federated users without prompting",
+            "providerId": "basic-flow",
+            "topLevel": True,
+            "builtIn": False,
+        },
+    )
+    if resp.status_code not in (201, 204):
+        print(f"    ✗ Failed to create flow: {resp.status_code} {resp.text}")
+        return None
+    print(f"    ✓ Created auth flow '{flow_alias}'")
+
+    # Step 2: Add 'Create User If Unique' execution
+    resp = requests.post(
+        f"{ALPHA_URL}/admin/realms/agency-alpha/authentication/flows/{flow_alias}/executions/execution",
+        headers=headers,
+        json={"provider": "idp-create-user-if-unique"},
+    )
+    if resp.status_code in (201, 204):
+        print("    ✓ Added 'Create User If Unique' execution")
+    else:
+        print(f"    ✗ Failed to add create-user execution: {resp.status_code} {resp.text}")
+
+    # Step 3: Add 'Automatically Set Existing User' execution
+    resp = requests.post(
+        f"{ALPHA_URL}/admin/realms/agency-alpha/authentication/flows/{flow_alias}/executions/execution",
+        headers=headers,
+        json={"provider": "idp-auto-link"},
+    )
+    if resp.status_code in (201, 204):
+        print("    ✓ Added 'Auto Link Existing User' execution")
+    else:
+        print(f"    ✗ Failed to add auto-link execution: {resp.status_code} {resp.text}")
+
+    # Step 4: Set both executions to ALTERNATIVE
+    resp = requests.get(
+        f"{ALPHA_URL}/admin/realms/agency-alpha/authentication/flows/{flow_alias}/executions",
+        headers=headers,
+    )
+    if resp.status_code == 200:
+        for execution in resp.json():
+            execution["requirement"] = "ALTERNATIVE"
+            requests.put(
+                f"{ALPHA_URL}/admin/realms/agency-alpha/authentication/flows/{flow_alias}/executions",
+                headers=headers,
+                json=execution,
+            )
+        print("    ✓ Set executions to ALTERNATIVE")
+
+    return flow_alias
+
+
 def setup_federation():
     """Configure Keycloak Alpha to trust Keycloak Bravo as an Identity Provider."""
     print("=" * 60)
@@ -53,52 +130,84 @@ def setup_federation():
         "Content-Type": "application/json",
     }
 
-    # Check if IDP already exists
+    # ─── Step 1: Create auto-link authentication flow ─────────────────────
+    print("\n  [1/3] Creating auto-link authentication flow...")
+    flow_alias = create_auto_link_flow(headers)
+    first_broker_flow = flow_alias or "first broker login"  # fallback to default
+
+    # ─── Step 2: Create Identity Provider ─────────────────────────────────
+    print("\n  [2/3] Configuring Identity Provider...")
+
     resp = requests.get(
         f"{ALPHA_URL}/admin/realms/agency-alpha/identity-provider/instances",
         headers=headers,
     )
     existing = [idp["alias"] for idp in resp.json()]
-    if "agency-bravo" in existing:
-        print("  Federation already configured. Skipping.")
-        return
 
-    # Create Identity Provider in Alpha pointing to Bravo
     idp_config = {
         "alias": "agency-bravo",
-        "displayName": "Login via Agency Bravo",
+        "displayName": "Agency Bravo",
         "providerId": "keycloak-oidc",
         "enabled": True,
         "trustEmail": True,
         "storeToken": True,
-        "firstBrokerLoginFlowAlias": "first broker login",
+        "firstBrokerLoginFlowAlias": first_broker_flow,
         "config": {
             "authorizationUrl": f"{BRAVO_EXTERNAL_URL}/realms/agency-bravo/protocol/openid-connect/auth",
             "tokenUrl": f"{BRAVO_URL}/realms/agency-bravo/protocol/openid-connect/token",
             "userInfoUrl": f"{BRAVO_URL}/realms/agency-bravo/protocol/openid-connect/userinfo",
             "jwksUrl": f"{BRAVO_URL}/realms/agency-bravo/protocol/openid-connect/certs",
-            "issuer": f"{BRAVO_URL}/realms/agency-bravo",
+            "logoutUrl": f"{BRAVO_EXTERNAL_URL}/realms/agency-bravo/protocol/openid-connect/logout",
+            # FIX: Empty issuer to skip issuer validation — avoids mismatch between
+            # browser URL (localhost:8081) and Docker-internal URL (keycloak-bravo:8080)
+            "issuer": "",
             "clientId": "alpha-federation",
             "clientSecret": "federation-secret-key",
             "clientAuthMethod": "client_secret_post",
-            "defaultScope": "openid profile email security-attributes",
+            # FIX: Include "roles" scope so Bravo's token includes realm_access.roles
+            "defaultScope": "openid profile email roles security-attributes",
             "syncMode": "FORCE",
             "validateSignature": "false",
+            # Disable user info to avoid internal/external URL mismatch
+            "disableUserInfo": "false",
         },
     }
 
-    resp = requests.post(
-        f"{ALPHA_URL}/admin/realms/agency-alpha/identity-provider/instances",
-        headers=headers,
-        json=idp_config,
-    )
-    if resp.status_code in (201, 204):
-        print("  ✓ Identity Provider 'agency-bravo' created in Alpha realm")
+    if "agency-bravo" in existing:
+        # Update existing IDP with fixed config
+        resp = requests.put(
+            f"{ALPHA_URL}/admin/realms/agency-alpha/identity-provider/instances/agency-bravo",
+            headers=headers,
+            json=idp_config,
+        )
+        if resp.status_code in (200, 204):
+            print("  ✓ Updated Identity Provider 'agency-bravo' with fixed config")
+        else:
+            print(f"  ✗ Failed to update IDP: {resp.status_code} {resp.text}")
     else:
-        print(f"  ✗ Failed to create IDP: {resp.status_code} {resp.text}")
+        # Create new IDP
+        resp = requests.post(
+            f"{ALPHA_URL}/admin/realms/agency-alpha/identity-provider/instances",
+            headers=headers,
+            json=idp_config,
+        )
+        if resp.status_code in (201, 204):
+            print("  ✓ Created Identity Provider 'agency-bravo'")
+        else:
+            print(f"  ✗ Failed to create IDP: {resp.status_code} {resp.text}")
 
-    # Add IDP mappers to carry over security attributes
-    mappers = [
+    # ─── Step 3: Add IDP mappers ─────────────────────────────────────────
+    print("\n  [3/3] Configuring IDP mappers...")
+
+    # Get existing mappers to avoid duplicates
+    resp = requests.get(
+        f"{ALPHA_URL}/admin/realms/agency-alpha/identity-provider/instances/agency-bravo/mappers",
+        headers=headers,
+    )
+    existing_mappers = [m["name"] for m in resp.json()] if resp.status_code == 200 else []
+
+    # Attribute mappers (clearance, compartments, organization)
+    attribute_mappers = [
         {
             "name": "clearance-mapper",
             "identityProviderAlias": "agency-bravo",
@@ -126,20 +235,81 @@ def setup_federation():
             "config": {
                 "attribute": "organization",
                 "attribute.value": "Agency Bravo",
+                "syncMode": "FORCE",
             },
         },
     ]
 
-    for mapper in mappers:
+    # FIX: Role mappers — map Bravo realm roles to Alpha realm roles
+    role_mappers = [
+        {
+            "name": "role-mapper-viewer",
+            "identityProviderAlias": "agency-bravo",
+            "identityProviderMapper": "oidc-role-idp-mapper",
+            "config": {
+                "syncMode": "FORCE",
+                "external.role": "viewer",
+                "role": "viewer",
+            },
+        },
+        {
+            "name": "role-mapper-analyst",
+            "identityProviderAlias": "agency-bravo",
+            "identityProviderMapper": "oidc-role-idp-mapper",
+            "config": {
+                "syncMode": "FORCE",
+                "external.role": "analyst",
+                "role": "analyst",
+            },
+        },
+        {
+            "name": "role-mapper-manager",
+            "identityProviderAlias": "agency-bravo",
+            "identityProviderMapper": "oidc-role-idp-mapper",
+            "config": {
+                "syncMode": "FORCE",
+                "external.role": "manager",
+                "role": "manager",
+            },
+        },
+        {
+            "name": "role-mapper-admin",
+            "identityProviderAlias": "agency-bravo",
+            "identityProviderMapper": "oidc-role-idp-mapper",
+            "config": {
+                "syncMode": "FORCE",
+                "external.role": "admin",
+                "role": "admin",
+            },
+        },
+        # Fallback: give ALL federated users at least "viewer" role
+        {
+            "name": "default-viewer-role",
+            "identityProviderAlias": "agency-bravo",
+            "identityProviderMapper": "hardcoded-role-idp-mapper",
+            "config": {
+                "syncMode": "FORCE",
+                "role": "viewer",
+            },
+        },
+    ]
+
+    all_mappers = attribute_mappers + role_mappers
+
+    for mapper in all_mappers:
+        if mapper["name"] in existing_mappers:
+            print(f"    ⏭ Mapper '{mapper['name']}' already exists. Skipping.")
+            continue
+
         resp = requests.post(
             f"{ALPHA_URL}/admin/realms/agency-alpha/identity-provider/instances/agency-bravo/mappers",
             headers=headers,
             json=mapper,
         )
         status = "✓" if resp.status_code in (201, 204) else "✗"
-        print(f"  {status} IDP Mapper '{mapper['name']}' -> {resp.status_code}")
+        print(f"    {status} IDP Mapper '{mapper['name']}' -> {resp.status_code}")
 
-    print("  ✓ Federation setup complete!\n")
+    print("\n  ✓ Federation setup complete!\n")
 
 
 def get_keycloak_users():
@@ -359,6 +529,8 @@ def main():
         setup_federation()
     except Exception as e:
         print(f"  ⚠ Federation setup error (non-fatal): {e}")
+        import traceback
+        traceback.print_exc()
         print("  Federation can be configured manually via Keycloak admin console.\n")
 
     try:
@@ -380,13 +552,16 @@ def main():
     print()
     print("  Test Users (all passwords: 'password'):")
     print("  ─────────────────────────────────────────")
-    print("  alice_admin   | TOP_SECRET | All compartments    | Admin")
-    print("  bob_analyst   | SECRET     | ALPHA, OMEGA        | Analyst")
-    print("  carol_viewer  | CONFIDENTIAL| ALPHA              | Viewer")
-    print("  dave_manager  | SECRET     | ALPHA, DELTA        | Manager")
-    print("  eve_auditor   | TOP_SECRET | All compartments    | Auditor")
-    print("  frank_bravo   | SECRET     | ALPHA (federated)   | Analyst")
-    print("  grace_bravo   | CONFIDENTIAL| None (federated)  | Viewer")
+    print("  alice_admin   | TOP_SECRET   | All compartments    | Admin + Auditor")
+    print("  bob_analyst   | SECRET       | ALPHA, OMEGA        | Analyst")
+    print("  carol_viewer  | CONFIDENTIAL | ALPHA               | Viewer")
+    print("  dave_manager  | SECRET       | ALPHA, DELTA        | Manager + Analyst")
+    print("  eve_auditor   | TOP_SECRET   | All compartments    | Auditor + Viewer")
+    print()
+    print("  Federated (Agency Bravo — click 'Agency Bravo' button):")
+    print("  ─────────────────────────────────────────")
+    print("  frank_bravo   | SECRET       | ALPHA               | Analyst")
+    print("  grace_bravo   | CONFIDENTIAL | None                | Viewer")
     print()
 
 

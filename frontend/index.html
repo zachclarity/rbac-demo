@@ -323,7 +323,7 @@
 
                 kc.init({
                     onLoad: 'check-sso',
-                    // silentCheckSsoRedirectUri removed — file doesn't exist, causes hang
+                    // silentCheckSsoRedirectUri removed — causes hang if file doesn't exist
                     enableLogging: true,
                     pkceMethod: 'S256',
                     checkLoginIframe: false,
@@ -375,7 +375,7 @@
 
             const loginBravo = () => {
                 setLoadingBravo(true);
-                // kc_idp_hint tells Keycloak to skip its login page and redirect
+                // kc_idp_hint tells Keycloak Alpha to skip its login page and redirect
                 // directly to the Bravo identity provider for federated login
                 keycloakInstance?.login({
                     redirectUri: window.location.origin,
@@ -405,8 +405,8 @@
                             <code className="mono" style={{color: '#f59e0b'}}>eve_auditor</code> — TOP SECRET / All / Auditor<br/>
                             <div style={{marginTop: 8, borderTop: '1px solid #1e3050', paddingTop: 8}}>
                                 <strong>Bravo Accounts (Federated)</strong><br/>
-                                <code className="mono" style={{color: '#ef4444'}}>frank_bravo</code> — SECRET / ALPHA<br/>
-                                <code className="mono" style={{color: '#3b82f6'}}>grace_bravo</code> — CONFIDENTIAL / None
+                                <code className="mono" style={{color: '#ef4444'}}>frank_bravo</code> — SECRET / ALPHA / Analyst<br/>
+                                <code className="mono" style={{color: '#3b82f6'}}>grace_bravo</code> — CONFIDENTIAL / None / Viewer
                             </div>
                         </div>
                     </div>

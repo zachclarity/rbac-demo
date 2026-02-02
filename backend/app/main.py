@@ -79,63 +79,32 @@ async def health():
 async def me(request: Request):
     """
     Get current user info from JWT.
-    Useful for the frontend to display user details.
-    """
-    from app.auth import get_current_user
-    from fastapi import Depends
-    from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
+    Uses the SAME decode_token() and build_current_user() functions as
+    the get_current_user FastAPI dependency, ensuring identical handling
+    of both local (Alpha) and federated (Bravo) tokens.
+    """
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
         return {"authenticated": False}
 
     try:
-        from app.auth import get_current_user, security_scheme
-        from app.auth import CurrentUser
+        from app.auth import decode_token, build_current_user
+
         token = auth_header.split(" ", 1)[1]
-
-        # Manual token validation
-        from jose import jwt, jwk
-        from app.auth import get_jwks, find_key
-
-        unverified_header = jwt.get_unverified_header(token)
-        kid = unverified_header.get("kid")
-        jwks = await get_jwks()
-        key_data = find_key(jwks, kid)
-        public_key = jwk.construct(key_data)
-
-        payload = jwt.decode(
-            token, public_key, algorithms=["RS256"],
-            options={"verify_aud": False, "verify_iss": False},
-        )
-
-        clearance = payload.get("clearance_level", "UNCLASSIFIED")
-        if isinstance(clearance, list):
-            clearance = clearance[0] if clearance else "UNCLASSIFIED"
-
-        compartments_raw = payload.get("compartments", "")
-        if isinstance(compartments_raw, list):
-            compartments_raw = compartments_raw[0] if compartments_raw else ""
-        compartments = [c.strip() for c in compartments_raw.split(",") if c.strip()]
-
-        org = payload.get("organization", "Unknown")
-        if isinstance(org, list):
-            org = org[0] if org else "Unknown"
-
-        realm_roles = payload.get("realm_access", {}).get("roles", [])
-        app_roles = [r for r in realm_roles
-                     if r in ("viewer", "analyst", "manager", "admin", "auditor")]
+        payload = await decode_token(token)
+        user = build_current_user(payload, token)
 
         return {
             "authenticated": True,
-            "keycloak_id": payload.get("sub"),
-            "username": payload.get("preferred_username"),
-            "email": payload.get("email"),
-            "full_name": payload.get("name"),
-            "organization": org,
-            "clearance_level": clearance,
-            "compartments": compartments,
-            "roles": app_roles,
+            "keycloak_id": user.keycloak_id,
+            "username": user.username,
+            "email": user.email,
+            "full_name": user.full_name,
+            "organization": user.organization,
+            "clearance_level": user.clearance_level,
+            "compartments": user.compartments,
+            "roles": user.roles,
         }
     except Exception as e:
         return {"authenticated": False, "error": str(e)}
