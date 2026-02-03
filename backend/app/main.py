@@ -5,7 +5,7 @@ Federated OIDC authentication via Keycloak with:
 - Role-based access control (RBAC)
 - Classification-based record access
 - Cell-level security with need-to-know compartments
-- OpenSearch integration with security filtering
+- OpenSearch integration with security filtering (optional)
 - Comprehensive audit logging
 """
 from fastapi import FastAPI, Request
@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.config import settings
-from app.routes import records, admin, audit_routes, search
+from app.routes import records, admin, audit_routes
 
 
 @asynccontextmanager
@@ -23,12 +23,6 @@ async def lifespan(app: FastAPI):
     print(f"  Keycloak: {settings.KEYCLOAK_URL}")
     print(f"  Realm: {settings.KEYCLOAK_REALM}")
     print("=" * 50)
-    
-    # Check OpenSearch connection on startup
-    from app.opensearch_client import check_opensearch_health
-    os_health = await check_opensearch_health()
-    print(f"  OpenSearch: {os_health.get('status', 'unknown')}")
-    
     yield
     print("API Shutting down")
 
@@ -58,40 +52,42 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
+# Include core routers
 app.include_router(records.router)
 app.include_router(admin.router)
 app.include_router(audit_routes.router)
-app.include_router(search.router)  # OpenSearch routes
+
+# Include search router (import is done at module level but won't fail)
+try:
+    from app.routes import search
+    app.include_router(search.router)
+    SEARCH_ENABLED = True
+except Exception as e:
+    print(f"Warning: Search routes not loaded: {e}")
+    SEARCH_ENABLED = False
 
 
 @app.get("/", tags=["Health"])
 async def root():
+    endpoints = {
+        "records": "/api/records",
+        "admin": "/api/admin",
+        "audit": "/api/audit",
+    }
+    if SEARCH_ENABLED:
+        endpoints["search"] = "/api/search"
+    
     return {
         "service": "RBAC + Cell-Level Security Demo",
         "status": "running",
         "docs": "/docs",
-        "endpoints": {
-            "records": "/api/records",
-            "admin": "/api/admin",
-            "audit": "/api/audit",
-            "search": "/api/search",
-        },
+        "endpoints": endpoints,
     }
 
 
 @app.get("/health", tags=["Health"])
 async def health():
-    from app.opensearch_client import check_opensearch_health
-    os_health = await check_opensearch_health()
-    
-    return {
-        "status": "healthy",
-        "services": {
-            "api": "healthy",
-            "opensearch": os_health.get("status", "unknown"),
-        }
-    }
+    return {"status": "healthy"}
 
 
 @app.get("/api/auth/me", tags=["Auth"])

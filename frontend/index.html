@@ -277,6 +277,280 @@
             font-size: 13px;
             color: #fbbf24;
         }
+
+        /* ─── Search Styles ─────────────────────────────────────────────── */
+        .search-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .search-form {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .search-input-group {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .search-input {
+            flex: 1;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            background: var(--bg-cell);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            font-family: inherit;
+            transition: border-color 0.2s;
+        }
+        .search-input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .search-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .search-btn {
+            padding: 12px 24px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .search-btn:hover { background: #4f46e5; }
+        .search-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .search-filters {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .filter-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .filter-select, .filter-input {
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            background: var(--bg-cell);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            font-family: inherit;
+            min-width: 140px;
+        }
+
+        .search-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: var(--bg-cell);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            font-size: 13px;
+        }
+        .search-meta-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .search-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--text-secondary);
+        }
+        .search-meta-value {
+            color: var(--text-primary);
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .search-results {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .search-result-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px 20px;
+            transition: border-color 0.2s;
+        }
+        .search-result-card:hover {
+            border-color: var(--accent);
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+        .result-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .result-score {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--bg-cell);
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        .result-summary {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 12px;
+        }
+
+        .result-meta {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        .result-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .result-compartments {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+
+        .masked-warning {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            color: #fbbf24;
+            margin-top: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            margin-top: 20px;
+        }
+        .page-btn {
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            background: var(--bg-cell);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .page-btn:hover:not(:disabled) {
+            background: var(--bg-card);
+            color: var(--text-primary);
+        }
+        .page-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .page-btn.active {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+        .page-info {
+            color: var(--text-muted);
+            font-size: 13px;
+            padding: 0 12px;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+        .no-results-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+        .no-results-text {
+            font-size: 15px;
+            margin-bottom: 8px;
+        }
+        .no-results-hint {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .security-filter-info {
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            color: #a5b4fc;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .opensearch-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+        .status-dot.connected { background: var(--success); }
+        .status-dot.error { background: var(--danger); }
     </style>
 </head>
 <body>
@@ -323,7 +597,6 @@
 
                 kc.init({
                     onLoad: 'check-sso',
-                    // silentCheckSsoRedirectUri removed — causes hang if file doesn't exist
                     enableLogging: true,
                     pkceMethod: 'S256',
                     checkLoginIframe: false,
@@ -375,8 +648,6 @@
 
             const loginBravo = () => {
                 setLoadingBravo(true);
-                // kc_idp_hint tells Keycloak Alpha to skip its login page and redirect
-                // directly to the Bravo identity provider for federated login
                 keycloakInstance?.login({
                     redirectUri: window.location.origin,
                     idpHint: 'agency-bravo',
@@ -410,6 +681,320 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            );
+        }
+
+        // ─── Search View (OpenSearch) ─────────────────────────────────
+        function SearchView({ user }) {
+            const [query, setQuery] = useState('');
+            const [category, setCategory] = useState('');
+            const [categories, setCategories] = useState([]);
+            const [results, setResults] = useState(null);
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState(null);
+            const [page, setPage] = useState(1);
+            const [pageSize] = useState(10);
+            const [osHealth, setOsHealth] = useState(null);
+
+            // Check OpenSearch health on mount
+            useEffect(() => {
+                apiCall('/api/search/health')
+                    .then(setOsHealth)
+                    .catch((err) => {
+                        // If 404, search endpoint doesn't exist
+                        if (err.message.includes('404') || err.message.includes('Not Found')) {
+                            setOsHealth({ status: 'not_configured', error: 'Search API not available' });
+                        } else {
+                            setOsHealth({ status: 'error', error: err.message });
+                        }
+                    });
+            }, []);
+
+            // Load categories (only if OpenSearch is available)
+            useEffect(() => {
+                if (osHealth?.status === 'connected') {
+                    apiCall('/api/search/categories')
+                        .then(data => setCategories(data.categories || []))
+                        .catch(console.error);
+                }
+            }, [osHealth]);
+
+            const handleSearch = async (e) => {
+                e?.preventDefault();
+                if (!query.trim()) return;
+
+                setLoading(true);
+                setError(null);
+
+                try {
+                    const result = await apiCall('/api/search/documents', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            query: query.trim(),
+                            category: category || null,
+                            page,
+                            page_size: pageSize,
+                        }),
+                    });
+                    setResults(result);
+                } catch (err) {
+                    setError(err.message);
+                    setResults(null);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            // Re-search when page changes
+            useEffect(() => {
+                if (results && query.trim()) {
+                    handleSearch();
+                }
+            }, [page]);
+
+            const handlePageChange = (newPage) => {
+                setPage(newPage);
+            };
+
+            // Show message if OpenSearch is not configured
+            if (osHealth?.status === 'not_configured' || osHealth?.status === 'error') {
+                return (
+                    <div className="card" style={{ textAlign: 'center', padding: 48 }}>
+                        <div style={{ fontSize: 48, marginBottom: 16 }}>🔍</div>
+                        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 12, color: '#f59e0b' }}>
+                            Search Not Available
+                        </div>
+                        <div style={{ color: '#94a3b8', fontSize: 14, maxWidth: 500, margin: '0 auto', lineHeight: 1.6 }}>
+                            The OpenSearch service is not configured or unavailable.
+                            <br/><br/>
+                            <span style={{ fontSize: 12, color: '#64748b' }}>
+                                {osHealth?.error || 'Please ensure OpenSearch is running and the backend is configured.'}
+                            </span>
+                        </div>
+                        <div style={{ marginTop: 24 }}>
+                            <button 
+                                className="btn btn-primary"
+                                onClick={() => window.location.reload()}
+                            >
+                                🔄 Retry
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="search-container">
+                    {/* OpenSearch Status */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div className="opensearch-status">
+                            <span className={`status-dot ${osHealth?.status === 'connected' ? 'connected' : 'error'}`}></span>
+                            <span>OpenSearch: {osHealth?.status || 'checking...'}</span>
+                            {osHealth?.cluster_name && <span className="mono" style={{ color: '#64748b' }}>({osHealth.cluster_name})</span>}
+                        </div>
+                    </div>
+
+                    {/* Security Filter Info */}
+                    <div className="security-filter-info">
+                        🛡️ <span>
+                            Search results are automatically filtered based on your clearance level 
+                            (<strong>{user?.clearance_level || 'UNCLASSIFIED'}</strong>) and compartment access
+                            ({user?.compartments?.length > 0 ? user.compartments.join(', ') : 'none'}).
+                        </span>
+                    </div>
+
+                    {/* Search Form */}
+                    <form className="search-form" onSubmit={handleSearch}>
+                        <div className="search-input-group">
+                            <input
+                                type="text"
+                                className="search-input"
+                                placeholder="Search classified documents..."
+                                value={query}
+                                onChange={(e) => setQuery(e.target.value)}
+                            />
+                            <button type="submit" className="search-btn" disabled={loading || !query.trim()}>
+                                {loading ? (
+                                    <>
+                                        <div className="spinner" style={{ width: 16, height: 16, marginRight: 0 }}></div>
+                                        Searching...
+                                    </>
+                                ) : (
+                                    <>🔍 Search</>
+                                )}
+                            </button>
+                        </div>
+
+                        <div className="search-filters">
+                            <div className="filter-group">
+                                <label className="filter-label">Category</label>
+                                <select 
+                                    className="filter-select"
+                                    value={category}
+                                    onChange={(e) => setCategory(e.target.value)}
+                                >
+                                    <option value="">All Categories</option>
+                                    {categories.map(cat => (
+                                        <option key={cat.name} value={cat.name}>
+                                            {cat.name} ({cat.count})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                    </form>
+
+                    {/* Error Display */}
+                    {error && (
+                        <div className="card" style={{ color: '#ef4444', background: 'rgba(239, 68, 68, 0.1)', borderColor: '#991b1b' }}>
+                            ❌ Search Error: {error}
+                        </div>
+                    )}
+
+                    {/* Results */}
+                    {results && (
+                        <>
+                            {/* Results Meta */}
+                            <div className="search-meta">
+                                <div className="search-meta-left">
+                                    <div className="search-meta-item">
+                                        📄 <span className="search-meta-value">{results.total}</span> results found
+                                    </div>
+                                    <div className="search-meta-item">
+                                        ⏱️ <span className="search-meta-value">{results.query_time_ms}ms</span>
+                                    </div>
+                                    <div className="search-meta-item">
+                                        📄 Page <span className="search-meta-value">{results.page}</span> of <span className="search-meta-value">{results.total_pages}</span>
+                                    </div>
+                                </div>
+                                <div className="search-meta-item">
+                                    🔒 Filtered to: <ClassBadge level={results.user_clearance} />
+                                </div>
+                            </div>
+
+                            {/* Results List */}
+                            {results.results?.length > 0 ? (
+                                <div className="search-results">
+                                    {results.results.map((doc) => (
+                                        <div key={doc.id} className="search-result-card">
+                                            <div className="result-header">
+                                                <div className="result-title">
+                                                    <ClassBadge level={doc.classification} />
+                                                    {doc.title}
+                                                </div>
+                                                <div className="result-score">
+                                                    Score: {doc.score.toFixed(2)}
+                                                </div>
+                                            </div>
+
+                                            {doc.summary && (
+                                                <div className="result-summary">{doc.summary}</div>
+                                            )}
+
+                                            <div className="result-meta">
+                                                {doc.category && (
+                                                    <div className="result-meta-item">
+                                                        📁 {doc.category}
+                                                    </div>
+                                                )}
+                                                {doc.author && (
+                                                    <div className="result-meta-item">
+                                                        👤 {doc.author}
+                                                    </div>
+                                                )}
+                                                {doc.created_at && (
+                                                    <div className="result-meta-item">
+                                                        📅 {new Date(doc.created_at).toLocaleDateString()}
+                                                    </div>
+                                                )}
+                                                <div className="result-meta-item">
+                                                    🔑 ID: <span className="mono">{doc.id}</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Compartments */}
+                                            {doc.compartments?.length > 0 && (
+                                                <div style={{ marginTop: 10 }}>
+                                                    <span style={{ fontSize: 11, color: '#64748b', marginRight: 8 }}>Compartments:</span>
+                                                    <div className="result-compartments" style={{ display: 'inline-flex' }}>
+                                                        {doc.compartments.map(c => (
+                                                            <span key={c} className="compartment-tag">{c}</span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Masked Fields Warning */}
+                                            {doc.masked_fields?.length > 0 && (
+                                                <div className="masked-warning">
+                                                    ⚠️ Some fields are redacted: <strong>{doc.masked_fields.join(', ')}</strong>
+                                                    <span style={{ marginLeft: 'auto', fontSize: 11 }}>
+                                                        (Higher clearance or compartment access required)
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="no-results">
+                                    <div className="no-results-icon">🔍</div>
+                                    <div className="no-results-text">No documents found</div>
+                                    <div className="no-results-hint">
+                                        Try different keywords or check your security clearance level
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Pagination */}
+                            {results.total_pages > 1 && (
+                                <div className="pagination">
+                                    <button
+                                        className="page-btn"
+                                        onClick={() => handlePageChange(page - 1)}
+                                        disabled={page <= 1}
+                                    >
+                                        ← Previous
+                                    </button>
+                                    
+                                    {[...Array(Math.min(5, results.total_pages))].map((_, i) => {
+                                        const pageNum = Math.max(1, Math.min(page - 2, results.total_pages - 4)) + i;
+                                        if (pageNum > results.total_pages) return null;
+                                        return (
+                                            <button
+                                                key={pageNum}
+                                                className={`page-btn ${pageNum === page ? 'active' : ''}`}
+                                                onClick={() => handlePageChange(pageNum)}
+                                            >
+                                                {pageNum}
+                                            </button>
+                                        );
+                                    })}
+
+                                    <button
+                                        className="page-btn"
+                                        onClick={() => handlePageChange(page + 1)}
+                                        disabled={page >= results.total_pages}
+                                    >
+                                        Next →
+                                    </button>
+                                </div>
+                            )}
+                        </>
+                    )}
+
+                    {/* Initial State */}
+                    {!results && !loading && !error && (
+                        <div className="card" style={{ textAlign: 'center', padding: 48 }}>
+                            <div style={{ fontSize: 48, marginBottom: 16 }}>🔎</div>
+                            <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Search Classified Documents</div>
+                            <div style={{ color: '#64748b', fontSize: 13, maxWidth: 500, margin: '0 auto' }}>
+                                Enter keywords to search through documents you have access to.
+                                Results are filtered based on your security clearance and compartment access.
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         }
@@ -602,56 +1187,22 @@
                                         <th>Clearance</th>
                                         <th>Roles</th>
                                         <th>Compartments</th>
-                                        <th>Status</th>
-                                        <th>Last Login</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {users.map(u => (
-                                        <tr key={u.id}>
-                                            <td><strong>{u.username}</strong><br/><span style={{color: '#64748b', fontSize: 11}}>{u.email}</span></td>
+                                        <tr key={u.keycloak_id}>
+                                            <td><strong>{u.username}</strong><br/><span style={{fontSize: 11, color: '#64748b'}}>{u.email}</span></td>
                                             <td>{u.organization}</td>
                                             <td><ClassBadge level={u.clearance_level} /></td>
                                             <td>{u.roles?.map(r => <RoleBadge key={r} role={r} />)}</td>
-                                            <td className="cell-compartments">
-                                                {u.approved_compartments?.map(c => <span key={c} className="compartment-tag">{c}</span>)}
-                                                {(!u.approved_compartments || u.approved_compartments.length === 0) && <span style={{color: '#64748b', fontSize: 11}}>None</span>}
+                                            <td>
+                                                <div className="cell-compartments">
+                                                    {u.compartments?.length > 0
+                                                        ? u.compartments.map(c => <span key={c} className="compartment-tag">{c}</span>)
+                                                        : <span style={{color: '#64748b', fontSize: 11}}>None</span>}
+                                                </div>
                                             </td>
-                                            <td style={{color: u.is_active ? '#22c55e' : '#ef4444'}}>{u.is_active ? '● Active' : '○ Inactive'}</td>
-                                            <td style={{color: '#64748b', fontSize: 11}}>{u.last_login ? new Date(u.last_login).toLocaleString() : 'Never'}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    {/* Need-to-Know Approvals */}
-                    <div className="card">
-                        <div className="card-title" style={{marginBottom: 16}}>🔑 Need-to-Know Approvals</div>
-                        <div style={{overflowX: 'auto'}}>
-                            <table className="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>User</th>
-                                        <th>Compartment</th>
-                                        <th>Approved By</th>
-                                        <th>Date</th>
-                                        <th>Expires</th>
-                                        <th>Status</th>
-                                        <th>Reason</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {approvals.map(a => (
-                                        <tr key={a.id}>
-                                            <td><strong>{a.username}</strong></td>
-                                            <td><span className="compartment-tag">{a.compartment}</span></td>
-                                            <td>{a.approved_by}</td>
-                                            <td style={{fontSize: 11, color: '#64748b'}}>{a.approved_at ? new Date(a.approved_at).toLocaleString() : '-'}</td>
-                                            <td style={{fontSize: 11, color: '#64748b'}}>{a.expires_at ? new Date(a.expires_at).toLocaleString() : 'Never'}</td>
-                                            <td style={{color: a.status === 'ACTIVE' ? '#22c55e' : '#ef4444'}}>{a.status}</td>
-                                            <td style={{fontSize: 12, color: '#94a3b8'}}>{a.reason}</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -665,112 +1216,46 @@
         // ─── Audit View ────────────────────────────────────────────────
         function AuditView({ user }) {
             const [logs, setLogs] = useState([]);
-            const [stats, setStats] = useState(null);
-            const [total, setTotal] = useState(0);
             const [loading, setLoading] = useState(true);
-            const [filters, setFilters] = useState({ action: '', username: '', was_allowed: '', hours: 168 });
+            const [filter, setFilter] = useState({ action: '', user: '' });
 
-            const fetchLogs = useCallback(async () => {
-                setLoading(true);
-                try {
-                    const params = new URLSearchParams({ hours: filters.hours, limit: 200 });
-                    if (filters.action) params.set('action', filters.action);
-                    if (filters.username) params.set('username', filters.username);
-                    if (filters.was_allowed !== '') params.set('was_allowed', filters.was_allowed);
+            useEffect(() => {
+                apiCall('/api/audit?limit=100')
+                    .then(data => setLogs(data.logs || []))
+                    .catch(console.error)
+                    .finally(() => setLoading(false));
+            }, []);
 
-                    const [logsData, statsData] = await Promise.all([
-                        apiCall(`/api/audit/logs?${params}`),
-                        apiCall(`/api/audit/stats?hours=${filters.hours}`),
-                    ]);
-                    setLogs(logsData.logs || []);
-                    setTotal(logsData.total || 0);
-                    setStats(statsData);
-                } catch (e) {
-                    console.error('Audit load error:', e);
-                } finally {
-                    setLoading(false);
-                }
-            }, [filters]);
+            if (loading) return <div className="loading"><div className="spinner"></div>Loading audit logs...</div>;
 
-            useEffect(() => { fetchLogs(); }, [fetchLogs]);
+            const filtered = logs.filter(log => {
+                if (filter.action && !log.action?.includes(filter.action)) return false;
+                if (filter.user && !log.username?.toLowerCase().includes(filter.user.toLowerCase())) return false;
+                return true;
+            });
 
             return (
                 <div>
-                    {/* Audit Stats */}
-                    {stats && (
-                        <div className="card">
-                            <div className="card-title" style={{marginBottom: 16}}>📈 Audit Statistics (Last {filters.hours}h)</div>
-                            <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 16}}>
-                                <div>
-                                    <h4 style={{fontSize: 12, color: '#64748b', marginBottom: 8}}>Actions Breakdown</h4>
-                                    {Object.entries(stats.actions_breakdown || {}).map(([action, count]) => (
-                                        <div key={action} style={{display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13}}>
-                                            <span className="mono" style={{color: action.includes('DENIED') ? '#ef4444' : '#94a3b8'}}>{action}</span>
-                                            <strong>{count}</strong>
-                                        </div>
-                                    ))}
-                                </div>
-                                <div>
-                                    <h4 style={{fontSize: 12, color: '#64748b', marginBottom: 8}}>Activity by User</h4>
-                                    {Object.entries(stats.activity_by_user || {}).map(([u, count]) => (
-                                        <div key={u} style={{display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13}}>
-                                            <span>{u}</span>
-                                            <strong>{count}</strong>
-                                        </div>
-                                    ))}
-                                </div>
-                                <div>
-                                    <h4 style={{fontSize: 12, color: '#ef4444', marginBottom: 8}}>Denials by User</h4>
-                                    {Object.entries(stats.denials_by_user || {}).length === 0
-                                        ? <span style={{color: '#64748b', fontSize: 12}}>No denials in this period</span>
-                                        : Object.entries(stats.denials_by_user || {}).map(([u, count]) => (
-                                            <div key={u} style={{display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13}}>
-                                                <span style={{color: '#fca5a5'}}>{u}</span>
-                                                <strong style={{color: '#ef4444'}}>{count}</strong>
-                                            </div>
-                                        ))
-                                    }
-                                </div>
+                    <div className="card">
+                        <div className="card-header">
+                            <div className="card-title">📊 Security Audit Log</div>
+                            <div className="filter-bar">
+                                <select value={filter.action} onChange={e => setFilter({...filter, action: e.target.value})}>
+                                    <option value="">All Actions</option>
+                                    <option value="RECORD_ACCESS">Record Access</option>
+                                    <option value="CELL_ACCESS">Cell Access</option>
+                                    <option value="DENIED">Access Denied</option>
+                                </select>
+                                <input
+                                    type="text"
+                                    placeholder="Filter by user..."
+                                    value={filter.user}
+                                    onChange={e => setFilter({...filter, user: e.target.value})}
+                                />
                             </div>
                         </div>
-                    )}
-
-                    {/* Filters */}
-                    <div className="filter-bar">
-                        <select value={filters.action} onChange={e => setFilters(f => ({...f, action: e.target.value}))}>
-                            <option value="">All Actions</option>
-                            <option value="READ_CELL">Read Cell</option>
-                            <option value="CELL_ACCESS_DENIED">Cell Denied</option>
-                            <option value="READ_RECORD">Read Record</option>
-                            <option value="ACCESS_DENIED">Access Denied</option>
-                            <option value="CREATE">Create</option>
-                            <option value="UPDATE">Update</option>
-                            <option value="DELETE">Delete</option>
-                            <option value="LIST_RECORDS">List Records</option>
-                            <option value="GRANT_NTK">Grant NTK</option>
-                            <option value="REVOKE_NTK">Revoke NTK</option>
-                        </select>
-                        <input placeholder="Username..." value={filters.username}
-                            onChange={e => setFilters(f => ({...f, username: e.target.value}))} />
-                        <select value={filters.was_allowed} onChange={e => setFilters(f => ({...f, was_allowed: e.target.value}))}>
-                            <option value="">All Results</option>
-                            <option value="true">Allowed</option>
-                            <option value="false">Denied</option>
-                        </select>
-                        <select value={filters.hours} onChange={e => setFilters(f => ({...f, hours: parseInt(e.target.value)}))}>
-                            <option value="1">Last 1h</option>
-                            <option value="24">Last 24h</option>
-                            <option value="168">Last 7d</option>
-                            <option value="720">Last 30d</option>
-                        </select>
-                        <button className="btn btn-ghost btn-sm" onClick={fetchLogs}>🔄 Refresh</button>
-                        <span style={{color: '#64748b', fontSize: 12, marginLeft: 8}}>{total} events</span>
-                    </div>
-
-                    {/* Logs Table */}
-                    <div className="card" style={{padding: 0, overflow: 'hidden'}}>
-                        {loading ? (
-                            <div className="loading"><div className="spinner"></div>Loading audit logs...</div>
+                        {filtered.length === 0 ? (
+                            <div style={{textAlign: 'center', padding: 40, color: '#64748b'}}>No audit logs found</div>
                         ) : (
                             <div style={{overflowX: 'auto'}}>
                                 <table className="data-table">
@@ -781,16 +1266,16 @@
                                             <th>Action</th>
                                             <th>Record</th>
                                             <th>Field</th>
-                                            <th>Classification</th>
+                                            <th>Required</th>
                                             <th>Result</th>
-                                            <th>Details</th>
+                                            <th>Reason</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {logs.map(log => (
-                                            <tr key={log.id} className={!log.was_allowed ? 'denied' : ''}>
-                                                <td style={{fontSize: 11, color: '#64748b', whiteSpace: 'nowrap'}} className="mono">
-                                                    {log.timestamp ? new Date(log.timestamp).toLocaleString() : '-'}
+                                        {filtered.map((log, i) => (
+                                            <tr key={i} className={log.was_allowed ? '' : 'denied'}>
+                                                <td className="mono" style={{fontSize: 11, whiteSpace: 'nowrap'}}>
+                                                    {new Date(log.timestamp).toLocaleString()}
                                                 </td>
                                                 <td>
                                                     <strong>{log.username}</strong>
@@ -915,6 +1400,10 @@
                             onClick={() => setActiveTab('records')}>
                             📋 Records
                         </div>
+                        <div className={`nav-tab ${activeTab === 'search' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('search')}>
+                            🔍 Search
+                        </div>
                         <div className={`nav-tab ${activeTab === 'profile' ? 'active' : ''}`}
                             onClick={() => setActiveTab('profile')}>
                             🛡️ Security Profile
@@ -936,6 +1425,7 @@
                     {/* Content */}
                     <div className="main-content">
                         {activeTab === 'records' && <RecordsView user={user} />}
+                        {activeTab === 'search' && <SearchView user={user} />}
                         {activeTab === 'profile' && <UserProfile user={user} />}
                         {activeTab === 'admin' && canViewAdmin && <AdminView user={user} />}
                         {activeTab === 'audit' && canViewAudit && <AuditView user={user} />}
