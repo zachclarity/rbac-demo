@@ -207,17 +207,23 @@ services:
     depends_on:
       - backend
 
-  # ─── Search App (RBAC & Cell-Level Security Demo) ────────────────────
+  # ─── Search App (RBAC, Cell-Level & NTK Security with Keycloak) ──────
   search-app:
     build: ./search-app
     environment:
       OPENSEARCH_HOST: opensearch
       OPENSEARCH_PORT: "9200"
       INDEX_NAME: secure-documents
+      # Keycloak Authentication
+      KEYCLOAK_URL: http://keycloak-alpha:8080
+      KEYCLOAK_REALM: agency-alpha
+      KEYCLOAK_CLIENT_ID: frontend-app
     ports:
       - "8002:8000"
     depends_on:
       opensearch:
+        condition: service_healthy
+      keycloak-alpha:
         condition: service_healthy
 
 volumes:

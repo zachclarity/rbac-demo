@@ -1,801 +1,1075 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OpenSearch Security Demo — RBAC &amp; Cell-Level</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-/* ── Reset & Base ───────────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenSearch Security Demo — RBAC, Cell & NTK</title>
+    <script src="https://cdn.jsdelivr.net/npm/keycloak-js@24.0.0/dist/keycloak.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap');
 
-:root {
-  --bg-primary:    #0a0e17;
-  --bg-secondary:  #111827;
-  --bg-card:       #1a2234;
-  --bg-card-hover: #1f2b42;
-  --border:        #2a3654;
-  --border-active: #4a6fa5;
-  --text-primary:  #e2e8f0;
-  --text-secondary:#94a3b8;
-  --text-muted:    #64748b;
-  --accent:        #38bdf8;
-  --accent-dim:    #0c4a6e;
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
-  --cls-unclassified: #22c55e;
-  --cls-confidential: #3b82f6;
-  --cls-secret:       #f59e0b;
-  --cls-top-secret:   #ef4444;
-  --redacted-bg:      #7f1d1d;
-  --redacted-text:    #fca5a5;
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-secondary: #111827;
+            --bg-card: #1a2236;
+            --border: #1e3a5f;
+            --text-primary: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent: #6366f1;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --unclassified: #22c55e;
+            --confidential: #3b82f6;
+            --secret: #ef4444;
+            --top-secret: #f59e0b;
+            --redacted: #991b1b;
+            --redacted-bg: #450a0a;
+            --ntk-color: #a855f7;
+            --ntk-bg: #581c87;
+        }
 
-  --font-mono: 'JetBrains Mono', monospace;
-  --font-sans: 'Inter', system-ui, sans-serif;
-}
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
 
-body {
-  font-family: var(--font-sans);
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  line-height: 1.6;
-  min-height: 100vh;
-}
+        .mono { font-family: 'JetBrains Mono', monospace; }
 
-/* ── Layout ─────────────────────────────────────────────────── */
-.app-shell {
-  max-width: 1320px;
-  margin: 0 auto;
-  padding: 20px 24px 60px;
-}
+        /* Header */
+        .app-header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 0 24px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .app-header h1 {
+            font-size: 16px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .app-header h1 span { color: var(--accent); }
 
-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 20px 0 24px;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 24px;
-}
-header .logo {
-  width: 40px; height: 40px;
-  background: linear-gradient(135deg, var(--accent), #6366f1);
-  border-radius: 10px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 20px; font-weight: 700; color: #fff;
-}
-header h1 {
-  font-family: var(--font-mono);
-  font-size: 1.15rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-header h1 span { color: var(--accent); }
-header .subtitle {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  margin-left: auto;
-  font-family: var(--font-mono);
-}
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
 
-/* ── Controls Row ───────────────────────────────────────────── */
-.controls {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin-bottom: 20px;
-}
-.control-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 18px 20px;
-}
-.control-card h3 {
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--text-muted);
-  margin-bottom: 12px;
-}
+        .auth-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            padding: 6px 12px;
+            border-radius: 6px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+        }
+        .auth-status.authenticated {
+            border-color: var(--success);
+            color: var(--success);
+        }
+        .auth-status.demo {
+            border-color: var(--warning);
+            color: var(--warning);
+        }
 
-/* User selector */
-.user-select {
-  width: 100%;
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 10px 12px;
-  font-family: var(--font-sans);
-  font-size: 0.9rem;
-  cursor: pointer;
-  outline: none;
-  transition: border-color 0.2s;
-}
-.user-select:focus { border-color: var(--accent); }
+        .auth-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .auth-btn.login {
+            background: var(--accent);
+            color: white;
+        }
+        .auth-btn.login:hover { background: #4f46e5; }
+        .auth-btn.logout {
+            background: var(--bg-card);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+        .auth-btn.logout:hover { border-color: var(--danger); color: var(--danger); }
 
-.user-context {
-  margin-top: 12px;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 8px;
-}
-.ctx-item {
-  font-size: 0.78rem;
-  font-family: var(--font-mono);
-}
-.ctx-label {
-  color: var(--text-muted);
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  display: block;
-  margin-bottom: 2px;
-}
-.ctx-value { color: var(--text-primary); }
+        /* Tabs */
+        .tab-nav {
+            display: flex;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 0 24px;
+            gap: 4px;
+        }
+        .tab-btn {
+            padding: 14px 20px;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        .tab-btn:hover { color: var(--text-primary); }
+        .tab-btn.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+        .tab-btn.ntk-tab.active {
+            color: var(--ntk-color);
+            border-bottom-color: var(--ntk-color);
+        }
 
-/* Mode toggle */
-.mode-tabs {
-  display: flex;
-  gap: 0;
-  margin-bottom: 14px;
-  border-radius: 8px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-}
-.mode-tab {
-  flex: 1;
-  padding: 10px 16px;
-  background: var(--bg-secondary);
-  border: none;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  text-align: center;
-}
-.mode-tab.active {
-  background: var(--accent-dim);
-  color: var(--accent);
-}
-.mode-tab:hover:not(.active) {
-  background: var(--bg-card-hover);
-  color: var(--text-primary);
-}
+        /* Main Content */
+        .main-content {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 24px;
+        }
 
-.mode-description {
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  line-height: 1.5;
-  min-height: 36px;
-}
+        /* Cards */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .card-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
 
-/* ── Search Bar ─────────────────────────────────────────────── */
-.search-row {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 20px;
-}
-.search-input {
-  flex: 1;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px 16px;
-  color: var(--text-primary);
-  font-size: 0.95rem;
-  font-family: var(--font-sans);
-  outline: none;
-  transition: border-color 0.2s;
-}
-.search-input:focus { border-color: var(--accent); }
-.search-input::placeholder { color: var(--text-muted); }
+        /* User Profile */
+        .user-profile {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .profile-field {
+            margin-bottom: 12px;
+        }
+        .profile-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+        .profile-value {
+            font-size: 14px;
+            color: var(--text-primary);
+        }
 
-.btn {
-  padding: 12px 24px;
-  border: none;
-  border-radius: 8px;
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.btn-primary {
-  background: var(--accent);
-  color: #0a0e17;
-}
-.btn-primary:hover { filter: brightness(1.15); }
-.btn-secondary {
-  background: var(--bg-card);
-  color: var(--text-secondary);
-  border: 1px solid var(--border);
-}
-.btn-secondary:hover { background: var(--bg-card-hover); color: var(--text-primary); }
-.btn-danger {
-  background: transparent;
-  color: var(--cls-top-secret);
-  border: 1px solid #7f1d1d;
-  font-size: 0.75rem;
-  padding: 8px 14px;
-}
-.btn-danger:hover { background: #7f1d1d22; }
+        /* User Selector */
+        .user-selector {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .user-selector select {
+            padding: 10px 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 14px;
+            flex: 1;
+            max-width: 400px;
+        }
+        .user-selector select:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
 
-/* ── Results Header ─────────────────────────────────────────── */
-.results-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 14px;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-.results-header h2 {
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  font-weight: 600;
-}
-.results-header h2 .count { color: var(--accent); }
-.results-header h2 .total { color: var(--text-muted); }
+        /* Search */
+        .search-bar {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .search-input {
+            flex: 1;
+            padding: 12px 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 14px;
+        }
+        .search-input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .search-btn {
+            padding: 12px 24px;
+            background: var(--accent);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .search-btn:hover { background: #4f46e5; }
+        .search-btn.ntk { background: var(--ntk-color); }
+        .search-btn.ntk:hover { background: #9333ea; }
 
-.filter-explanation {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 8px 14px;
-  margin-bottom: 16px;
-}
-.filter-explanation::before { content: "⛛ ACTIVE FILTERS  "; color: var(--accent); font-weight: 700; }
+        /* Stats */
+        .stats-row {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .stat-box {
+            background: var(--bg-secondary);
+            padding: 16px 20px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+        .stat-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+        .stat-value.visible { color: var(--success); }
+        .stat-value.hidden { color: var(--danger); }
+        .stat-value.ntk { color: var(--ntk-color); }
 
-/* ── Document Cards ─────────────────────────────────────────── */
-.doc-grid { display: flex; flex-direction: column; gap: 10px; }
+        /* Classification Badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .badge-UNCLASSIFIED { background: #052e16; color: var(--unclassified); border: 1px solid #166534; }
+        .badge-CONFIDENTIAL { background: #0c1e3d; color: var(--confidential); border: 1px solid #1e40af; }
+        .badge-SECRET { background: #2d0a0a; color: var(--secret); border: 1px solid #991b1b; }
+        .badge-TOP_SECRET { background: #2d1f04; color: var(--top-secret); border: 1px solid #92400e; }
+        .badge-NTK { background: var(--ntk-bg); color: var(--ntk-color); border: 1px solid #7c3aed; }
 
-.doc-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 18px 20px;
-  transition: border-color 0.2s;
-}
-.doc-card:hover { border-color: var(--border-active); }
+        /* Cell Badges */
+        .cell-badge {
+            display: inline-flex;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            background: #1e3a5f;
+            color: #7dd3fc;
+            margin-right: 4px;
+        }
 
-.doc-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-  flex-wrap: wrap;
-}
-.doc-title {
-  font-weight: 600;
-  font-size: 0.95rem;
-  flex: 1;
-  min-width: 200px;
-}
+        /* Document Cards */
+        .doc-grid {
+            display: grid;
+            gap: 16px;
+        }
+        .doc-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            transition: border-color 0.2s;
+        }
+        .doc-card:hover { border-color: var(--accent); }
+        .doc-card.ntk-restricted {
+            border-color: var(--ntk-color);
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(88, 28, 135, 0.1) 100%);
+        }
+        .doc-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+        .doc-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+        .doc-meta {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        .doc-content {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 12px;
+        }
+        .doc-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
 
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 9px;
-  border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-.badge-UNCLASSIFIED { background: #22c55e1a; color: var(--cls-unclassified); border: 1px solid #22c55e44; }
-.badge-CONFIDENTIAL { background: #3b82f61a; color: var(--cls-confidential); border: 1px solid #3b82f644; }
-.badge-SECRET       { background: #f59e0b1a; color: var(--cls-secret);       border: 1px solid #f59e0b44; }
-.badge-TOP_SECRET   { background: #ef44441a; color: var(--cls-top-secret);   border: 1px solid #ef444444; }
+        /* Sensitive Fields */
+        .sensitive-fields {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+        }
+        .field-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+        .field-label {
+            color: var(--text-muted);
+            min-width: 100px;
+        }
+        .field-value {
+            color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .field-value.redacted {
+            color: #ef4444;
+            background: var(--redacted-bg);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+        .field-value.cell-denied {
+            color: #f97316;
+            background: #431407;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+        .field-value.ntk-denied {
+            color: var(--ntk-color);
+            background: var(--ntk-bg);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
 
-.badge-org {
-  background: #6366f11a;
-  color: #a5b4fc;
-  border: 1px solid #6366f144;
-}
-.badge-cell {
-  background: #0e7490aa;
-  color: #67e8f9;
-  border: 1px solid #0e749044;
-  font-size: 0.6rem;
-}
+        /* NTK Status Indicator */
+        .ntk-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 4px;
+            background: rgba(168, 85, 247, 0.15);
+            color: var(--ntk-color);
+            border: 1px solid rgba(168, 85, 247, 0.3);
+        }
+        .ntk-indicator.granted { 
+            background: rgba(16, 185, 129, 0.15); 
+            color: var(--success);
+            border-color: rgba(16, 185, 129, 0.3);
+        }
 
-.doc-content {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  margin-bottom: 10px;
-  line-height: 1.55;
-}
+        /* Compare Grid */
+        .compare-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+        .compare-column {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+        }
+        .compare-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        .compare-title {
+            font-size: 14px;
+            font-weight: 700;
+        }
+        .compare-title.rbac { color: var(--confidential); }
+        .compare-title.cell { color: var(--warning); }
+        .compare-title.ntk { color: var(--ntk-color); }
+        .compare-count {
+            font-size: 20px;
+            font-weight: 700;
+        }
 
-.doc-fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 8px;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
-}
-.doc-field {
-  font-size: 0.78rem;
-  font-family: var(--font-mono);
-}
-.field-label {
-  color: var(--text-muted);
-  font-size: 0.62rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  display: block;
-}
-.field-value { color: var(--text-secondary); word-break: break-word; }
-.field-value.redacted {
-  background: var(--redacted-bg);
-  color: var(--redacted-text);
-  padding: 2px 8px;
-  border-radius: 3px;
-  display: inline-block;
-  letter-spacing: 0.08em;
-  font-weight: 600;
-}
+        /* Filter Explanation */
+        .filter-explanation {
+            background: var(--bg-secondary);
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 16px;
+            border-left: 3px solid var(--accent);
+        }
+        .filter-explanation.ntk { border-left-color: var(--ntk-color); }
 
-/* ── Upload Panel ───────────────────────────────────────────── */
-.upload-toggle {
-  margin-top: 24px;
-  margin-bottom: 10px;
-}
-.upload-panel {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 20px;
-  display: none;
-}
-.upload-panel.open { display: block; }
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+        }
 
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-.form-group { display: flex; flex-direction: column; gap: 4px; }
-.form-group.full { grid-column: 1 / -1; }
-.form-group label {
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-}
-.form-group input,
-.form-group select,
-.form-group textarea {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 9px 12px;
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-  font-size: 0.85rem;
-  outline: none;
-  transition: border-color 0.2s;
-}
-.form-group input:focus,
-.form-group select:focus,
-.form-group textarea:focus { border-color: var(--accent); }
-.form-group textarea { resize: vertical; min-height: 70px; }
-.upload-actions { margin-top: 14px; display: flex; gap: 10px; justify-content: flex-end; }
+        /* Login Screen */
+        .login-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: calc(100vh - 60px);
+            gap: 24px;
+        }
+        .login-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 40px;
+            text-align: center;
+            max-width: 400px;
+        }
+        .login-card h2 {
+            font-size: 24px;
+            margin-bottom: 12px;
+        }
+        .login-card p {
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+        }
+        .login-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .btn-keycloak {
+            padding: 14px 28px;
+            background: var(--accent);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn-keycloak:hover { background: #4f46e5; }
+        .btn-demo {
+            padding: 14px 28px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-demo:hover {
+            border-color: var(--warning);
+            color: var(--warning);
+        }
 
-/* ── Compare View ───────────────────────────────────────────── */
-.compare-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-.compare-col h3 {
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-  font-weight: 700;
-  margin-bottom: 10px;
-  padding-bottom: 8px;
-  border-bottom: 2px solid var(--border);
-}
-.compare-col h3 .count { font-weight: 400; color: var(--text-muted); }
-.compare-col.rbac h3 { border-color: var(--cls-confidential); color: var(--cls-confidential); }
-.compare-col.cell h3 { border-color: var(--cls-secret); color: var(--cls-secret); }
+        /* Reset Button */
+        .reset-btn {
+            padding: 8px 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--danger);
+            border-radius: 6px;
+            color: var(--danger);
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .reset-btn:hover {
+            background: var(--danger);
+            color: white;
+        }
 
-/* ── Loading & Empty ────────────────────────────────────────── */
-.loading {
-  text-align: center;
-  padding: 40px;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-}
-.loading::after { content: ""; animation: dots 1.4s infinite; }
-@keyframes dots {
-  0%, 20% { content: "."; }
-  40% { content: ".."; }
-  60%, 100% { content: "..."; }
-}
-.empty-state {
-  text-align: center;
-  padding: 50px 20px;
-  color: var(--text-muted);
-}
-.empty-state .icon { font-size: 2.5rem; margin-bottom: 12px; }
-.empty-state p { font-size: 0.85rem; }
-
-/* ── Responsive ─────────────────────────────────────────────── */
-@media (max-width: 800px) {
-  .controls { grid-template-columns: 1fr; }
-  .compare-grid { grid-template-columns: 1fr; }
-  .form-grid { grid-template-columns: 1fr; }
-}
-</style>
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .compare-grid { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 768px) {
+            .user-profile { grid-template-columns: 1fr; }
+            .stats-row { flex-wrap: wrap; }
+        }
+    </style>
 </head>
 <body>
-<div class="app-shell">
-  <!-- ── Header ──────────────────────────────────────────────── -->
-  <header>
-    <div class="logo">⛨</div>
-    <h1><span>OpenSearch</span> Security Demo</h1>
-    <span class="subtitle">RBAC &amp; Cell-Level Query Modes</span>
-  </header>
+    <div id="app"></div>
 
-  <!-- ── Controls ────────────────────────────────────────────── -->
-  <div class="controls">
-    <div class="control-card">
-      <h3>Active Identity</h3>
-      <select class="user-select" id="userSelect"></select>
-      <div class="user-context" id="userContext"></div>
-    </div>
-    <div class="control-card">
-      <h3>Security Mode</h3>
-      <div class="mode-tabs" id="modeTabs">
-        <button class="mode-tab active" data-mode="rbac">RBAC</button>
-        <button class="mode-tab" data-mode="cell">Cell-Level</button>
-        <button class="mode-tab" data-mode="compare">Compare ↔</button>
-      </div>
-      <div class="mode-description" id="modeDesc">
-        Filters by classification clearance and organisation membership. All visible fields shown in full.
-      </div>
-    </div>
-  </div>
+    <script>
+        // ══════════════════════════════════════════════════════════════════
+        // Keycloak Configuration
+        // ══════════════════════════════════════════════════════════════════
+        const KEYCLOAK_URL = 'http://localhost:8080';
+        const KEYCLOAK_REALM = 'agency-alpha';
+        const KEYCLOAK_CLIENT_ID = 'frontend-app';
 
-  <!-- ── Search Bar ──────────────────────────────────────────── -->
-  <div class="search-row">
-    <input type="text" class="search-input" id="searchInput" placeholder="Search documents… (leave empty to browse all)">
-    <button class="btn btn-primary" id="searchBtn">Search</button>
-    <button class="btn btn-danger" id="resetBtn" title="Reset index to seed data">Reset</button>
-  </div>
+        let keycloak = null;
+        let isAuthenticated = false;
+        let authToken = null;
 
-  <!-- ── Filter Explanation ──────────────────────────────────── -->
-  <div class="filter-explanation" id="filterExplanation" style="display:none;"></div>
+        async function initKeycloak() {
+            try {
+                keycloak = new Keycloak({
+                    url: KEYCLOAK_URL,
+                    realm: KEYCLOAK_REALM,
+                    clientId: KEYCLOAK_CLIENT_ID
+                });
 
-  <!-- ── Results ─────────────────────────────────────────────── -->
-  <div class="results-header" id="resultsHeader" style="display:none;">
-    <h2 id="resultsSummary"></h2>
-  </div>
-  <div id="resultsContainer"></div>
+                const authenticated = await keycloak.init({
+                    onLoad: 'check-sso',
+                    silentCheckSsoRedirectUri: window.location.origin + '/silent-check-sso.html',
+                    checkLoginIframe: false
+                });
 
-  <!-- ── Upload Panel ────────────────────────────────────────── -->
-  <div class="upload-toggle">
-    <button class="btn btn-secondary" id="uploadToggle">＋ Upload Document</button>
-  </div>
-  <div class="upload-panel" id="uploadPanel">
-    <div class="form-grid">
-      <div class="form-group full"><label>Title</label><input id="upTitle" placeholder="Document title"></div>
-      <div class="form-group full"><label>Content</label><textarea id="upContent" placeholder="Document body text"></textarea></div>
-      <div class="form-group"><label>Author</label><input id="upAuthor" placeholder="Author name"></div>
-      <div class="form-group">
-        <label>Classification</label>
-        <select id="upClass">
-          <option value="UNCLASSIFIED">UNCLASSIFIED</option>
-          <option value="CONFIDENTIAL">CONFIDENTIAL</option>
-          <option value="SECRET">SECRET</option>
-          <option value="TOP_SECRET">TOP SECRET</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Organisation</label>
-        <select id="upOrg">
-          <option value="agency-alpha">agency-alpha</option>
-          <option value="agency-bravo">agency-bravo</option>
-        </select>
-      </div>
-      <div class="form-group"><label>Department</label><input id="upDept" placeholder="e.g. operations, analysis"></div>
-      <div class="form-group"><label>Cell Access (comma separated)</label><input id="upCells" placeholder="e.g. cell-east,cell-hq  or  all"></div>
-      <div class="form-group"><label>Shared With (comma separated)</label><input id="upShared" placeholder="e.g. agency-bravo  or  all"></div>
-      <div class="form-group"><label>Source Name</label><input id="upSource" placeholder="HUMINT Source ECHO-7"></div>
-      <div class="form-group"><label>Handler ID</label><input id="upHandler" placeholder="H-4472"></div>
-      <div class="form-group full"><label>Raw Intel</label><textarea id="upRawIntel" placeholder="Raw intelligence data (sensitive — will be subject to cell masking)"></textarea></div>
-      <div class="form-group"><label>Location</label><input id="upLocation" placeholder="Eastern District"></div>
-    </div>
-    <div class="upload-actions">
-      <button class="btn btn-secondary" id="uploadCancel">Cancel</button>
-      <button class="btn btn-primary" id="uploadSubmit">Upload &amp; Index</button>
-    </div>
-  </div>
-</div>
+                isAuthenticated = authenticated;
+                if (authenticated) {
+                    authToken = keycloak.token;
+                    console.log('Authenticated as:', keycloak.tokenParsed?.preferred_username);
+                    
+                    // Auto-refresh token
+                    setInterval(async () => {
+                        try {
+                            const refreshed = await keycloak.updateToken(30);
+                            if (refreshed) {
+                                authToken = keycloak.token;
+                            }
+                        } catch (e) {
+                            console.warn('Token refresh failed:', e);
+                        }
+                    }, 30000);
+                }
 
-<script>
-// ═══════════════════════════════════════════════════════════════════
-// STATE
-// ═══════════════════════════════════════════════════════════════════
-const API = '';  // same origin
-let currentMode = 'rbac';
-let users = {};
-let currentUser = null;
+                return authenticated;
+            } catch (error) {
+                console.warn('Keycloak init failed:', error);
+                return false;
+            }
+        }
 
-const MODE_DESCRIPTIONS = {
-  rbac: 'Filters by classification clearance and organisation membership. All visible fields shown in full.',
-  cell: 'Applies RBAC filters PLUS cell-compartment restrictions. Sensitive fields (source, handler, raw intel) are redacted unless you have matching cell membership.',
-  compare: 'Runs the same query under both RBAC and Cell-Level modes side by side so you can see exactly what additional restrictions cell-level security adds.',
-};
+        function login() {
+            if (keycloak) {
+                keycloak.login();
+            }
+        }
 
-// ═══════════════════════════════════════════════════════════════════
-// INIT
-// ═══════════════════════════════════════════════════════════════════
-document.addEventListener('DOMContentLoaded', async () => {
-  await loadUsers();
-  bindEvents();
-  doSearch();
-});
+        function logout() {
+            if (keycloak && isAuthenticated) {
+                keycloak.logout({ redirectUri: window.location.origin });
+            } else {
+                // Demo mode - just refresh
+                window.location.reload();
+            }
+        }
 
-async function loadUsers() {
-  const res = await fetch(`${API}/api/users`);
-  users = await res.json();
-  const sel = document.getElementById('userSelect');
-  sel.innerHTML = '';
-  for (const [id, u] of Object.entries(users)) {
-    const opt = document.createElement('option');
-    opt.value = id;
-    opt.textContent = `${u.name}  —  ${u.description}`;
-    sel.appendChild(opt);
-  }
-  currentUser = Object.keys(users)[0];
-  sel.value = currentUser;
-  renderUserContext();
-}
+        // ══════════════════════════════════════════════════════════════════
+        // API Functions
+        // ══════════════════════════════════════════════════════════════════
+        async function apiCall(endpoint, options = {}) {
+            const headers = {
+                'Content-Type': 'application/json',
+                ...options.headers
+            };
+            
+            if (authToken) {
+                headers['Authorization'] = `Bearer ${authToken}`;
+            }
 
-function renderUserContext() {
-  const u = users[currentUser];
-  if (!u) return;
-  const ctx = document.getElementById('userContext');
-  const cells = u.cell_memberships.length ? u.cell_memberships.join(', ') : '(none)';
-  ctx.innerHTML = `
-    <div class="ctx-item"><span class="ctx-label">Organisation</span><span class="ctx-value">${u.organization}</span></div>
-    <div class="ctx-item"><span class="ctx-label">Clearance</span><span class="ctx-value">${u.clearance}</span></div>
-    <div class="ctx-item"><span class="ctx-label">Roles</span><span class="ctx-value">${u.roles.join(', ')}</span></div>
-    <div class="ctx-item"><span class="ctx-label">Cells</span><span class="ctx-value">${cells}</span></div>
-  `;
-}
+            const response = await fetch(endpoint, {
+                ...options,
+                headers
+            });
+            
+            if (!response.ok) {
+                throw new Error(`API error: ${response.status}`);
+            }
+            
+            return response.json();
+        }
 
-// ═══════════════════════════════════════════════════════════════════
-// EVENTS
-// ═══════════════════════════════════════════════════════════════════
-function bindEvents() {
-  document.getElementById('userSelect').addEventListener('change', e => {
-    currentUser = e.target.value;
-    renderUserContext();
-    doSearch();
-  });
+        // ══════════════════════════════════════════════════════════════════
+        // Application State & Rendering
+        // ══════════════════════════════════════════════════════════════════
+        const state = {
+            initialized: false,
+            demoMode: false,
+            showLoginScreen: true,
+            activeTab: 'rbac',
+            users: {},
+            selectedUserId: 'alpha-analyst',
+            currentUser: null,
+            searchQuery: '',
+            searchResults: null,
+            compareResults: null,
+            loading: false
+        };
 
-  document.querySelectorAll('.mode-tab').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.mode-tab').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      currentMode = btn.dataset.mode;
-      document.getElementById('modeDesc').textContent = MODE_DESCRIPTIONS[currentMode];
-      doSearch();
-    });
-  });
+        function setState(updates) {
+            Object.assign(state, updates);
+            render();
+        }
 
-  document.getElementById('searchBtn').addEventListener('click', doSearch);
-  document.getElementById('searchInput').addEventListener('keydown', e => {
-    if (e.key === 'Enter') doSearch();
-  });
+        async function initApp() {
+            const authenticated = await initKeycloak();
+            
+            if (authenticated) {
+                // Fetch current user profile
+                const me = await apiCall('/api/me');
+                setState({
+                    initialized: true,
+                    showLoginScreen: false,
+                    currentUser: me.profile,
+                    demoMode: false
+                });
+                await doSearch();
+            } else {
+                // Show login screen
+                const users = await apiCall('/api/users');
+                setState({
+                    initialized: true,
+                    users: users,
+                    showLoginScreen: true
+                });
+            }
+        }
 
-  document.getElementById('resetBtn').addEventListener('click', async () => {
-    if (!confirm('Reset index to original seed data?')) return;
-    await fetch(`${API}/api/reset`, { method: 'POST' });
-    doSearch();
-  });
+        async function enterDemoMode() {
+            const users = await apiCall('/api/users');
+            const me = await apiCall(`/api/me?user_id=${state.selectedUserId}`);
+            setState({
+                showLoginScreen: false,
+                demoMode: true,
+                users: users,
+                currentUser: me.profile
+            });
+            await doSearch();
+        }
 
-  document.getElementById('uploadToggle').addEventListener('click', () => {
-    document.getElementById('uploadPanel').classList.toggle('open');
-  });
-  document.getElementById('uploadCancel').addEventListener('click', () => {
-    document.getElementById('uploadPanel').classList.remove('open');
-  });
-  document.getElementById('uploadSubmit').addEventListener('click', uploadDocument);
-}
+        async function selectUser(userId) {
+            setState({ selectedUserId: userId, loading: true });
+            const me = await apiCall(`/api/me?user_id=${userId}`);
+            setState({ currentUser: me.profile, loading: false });
+            await doSearch();
+        }
 
-// ═══════════════════════════════════════════════════════════════════
-// SEARCH
-// ═══════════════════════════════════════════════════════════════════
-async function doSearch() {
-  const query = document.getElementById('searchInput').value;
-  const container = document.getElementById('resultsContainer');
-  container.innerHTML = '<div class="loading">Searching</div>';
+        async function doSearch() {
+            setState({ loading: true });
+            
+            try {
+                if (state.activeTab === 'compare') {
+                    const results = await apiCall('/api/compare', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            query: state.searchQuery,
+                            user_id: state.demoMode ? state.selectedUserId : ''
+                        })
+                    });
+                    setState({ compareResults: results, loading: false });
+                } else {
+                    const results = await apiCall('/api/search', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            query: state.searchQuery,
+                            user_id: state.demoMode ? state.selectedUserId : '',
+                            mode: state.activeTab
+                        })
+                    });
+                    setState({ searchResults: results, loading: false });
+                }
+            } catch (error) {
+                console.error('Search error:', error);
+                setState({ loading: false });
+            }
+        }
 
-  if (currentMode === 'compare') {
-    await doCompare(query);
-    return;
-  }
+        async function resetIndex() {
+            if (!confirm('Reset index to seed data?')) return;
+            setState({ loading: true });
+            await apiCall('/api/reset', { method: 'POST' });
+            await doSearch();
+        }
 
-  try {
-    const res = await fetch(`${API}/api/search`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, user_id: currentUser, mode: currentMode }),
-    });
-    const data = await res.json();
-    renderResults(data);
-  } catch (err) {
-    container.innerHTML = `<div class="empty-state"><div class="icon">⚠</div><p>Error: ${err.message}</p></div>`;
-  }
-}
+        function changeTab(tab) {
+            setState({ activeTab: tab, searchResults: null, compareResults: null });
+            doSearch();
+        }
 
-async function doCompare(query) {
-  const container = document.getElementById('resultsContainer');
-  try {
-    const res = await fetch(`${API}/api/compare`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, user_id: currentUser }),
-    });
-    const data = await res.json();
-    renderCompare(data);
-  } catch (err) {
-    container.innerHTML = `<div class="empty-state"><div class="icon">⚠</div><p>Error: ${err.message}</p></div>`;
-  }
-}
+        // ══════════════════════════════════════════════════════════════════
+        // Render Functions
+        // ══════════════════════════════════════════════════════════════════
+        function renderLoginScreen() {
+            return `
+                <div class="login-screen">
+                    <div class="login-card">
+                        <h2>🔐 OpenSearch Security Demo</h2>
+                        <p>RBAC, Cell-Level & Need-to-Know (NTK) Access Control</p>
+                        <div class="login-actions">
+                            <button class="btn-keycloak" onclick="login()">
+                                🔑 Login with Keycloak
+                            </button>
+                            <button class="btn-demo" onclick="enterDemoMode()">
+                                ⚠️ Continue in Demo Mode
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
 
-// ═══════════════════════════════════════════════════════════════════
-// RENDER — SINGLE MODE
-// ═══════════════════════════════════════════════════════════════════
-function renderResults(data) {
-  const header = document.getElementById('resultsHeader');
-  const summary = document.getElementById('resultsSummary');
-  const filter = document.getElementById('filterExplanation');
-  const container = document.getElementById('resultsContainer');
+        function renderHeader() {
+            const authStatus = state.demoMode 
+                ? '<div class="auth-status demo">⚠️ Demo Mode</div>'
+                : '<div class="auth-status authenticated">🔑 Authenticated</div>';
 
-  header.style.display = 'flex';
-  filter.style.display = 'block';
-  filter.textContent = data.filter_explanation;
+            const authButton = (state.demoMode || isAuthenticated)
+                ? '<button class="auth-btn logout" onclick="logout()">Logout</button>'
+                : '<button class="auth-btn login" onclick="login()">Login</button>';
 
-  summary.innerHTML = `<span class="count">${data.visible_count}</span> visible  /  <span class="total">${data.total_in_index} total  (${data.hidden_count} hidden)</span>`;
+            return `
+                <header class="app-header">
+                    <h1>🔎 <span>OpenSearch</span> Security Demo</h1>
+                    <div class="header-right">
+                        ${authStatus}
+                        ${authButton}
+                    </div>
+                </header>
+            `;
+        }
 
-  if (!data.documents.length) {
-    container.innerHTML = '<div class="empty-state"><div class="icon">🔒</div><p>No documents match your current security context.</p></div>';
-    return;
-  }
+        function renderTabs() {
+            const tabs = [
+                { id: 'rbac', label: '🔐 RBAC' },
+                { id: 'cell', label: '🏢 Cell-Level' },
+                { id: 'ntk', label: '🔒 NTK', isNtk: true },
+                { id: 'compare', label: '⚖️ Compare All' }
+            ];
 
-  container.innerHTML = '<div class="doc-grid">' + data.documents.map(renderDocCard).join('') + '</div>';
-}
+            return `
+                <nav class="tab-nav">
+                    ${tabs.map(t => `
+                        <button class="tab-btn ${t.isNtk ? 'ntk-tab' : ''} ${state.activeTab === t.id ? 'active' : ''}"
+                            onclick="changeTab('${t.id}')">
+                            ${t.label}
+                        </button>
+                    `).join('')}
+                </nav>
+            `;
+        }
 
-function renderDocCard(doc) {
-  const cells = (doc.cell_access || []).filter(c => c !== 'all');
-  const cellBadges = cells.map(c => `<span class="badge badge-cell">${esc(c)}</span>`).join('');
-  const allBadge = (doc.cell_access || []).includes('all') ? '<span class="badge badge-cell">all</span>' : '';
+        function renderUserSelector() {
+            if (!state.demoMode) return '';
+            
+            const options = Object.entries(state.users).map(([id, user]) => 
+                `<option value="${id}" ${state.selectedUserId === id ? 'selected' : ''}>
+                    ${user.name} — ${user.clearance}
+                </option>`
+            ).join('');
 
-  const sensitiveFields = ['source_name', 'handler_id', 'raw_intel'];
-  const fieldAccess = doc._field_access || {};
+            return `
+                <div class="user-selector">
+                    <label>Demo User:</label>
+                    <select onchange="selectUser(this.value)" ${!state.demoMode ? 'disabled' : ''}>
+                        ${options}
+                    </select>
+                </div>
+            `;
+        }
 
-  let fieldsHTML = '';
-  const metaFields = [
-    ['Author', doc.author],
-    ['Department', doc.department],
-    ['Location', doc.location],
-    ['Date', doc.date_created],
-  ];
-  for (const [label, val] of metaFields) {
-    if (val) fieldsHTML += `<div class="doc-field"><span class="field-label">${label}</span><span class="field-value">${esc(val)}</span></div>`;
-  }
-  for (const field of sensitiveFields) {
-    const val = doc[field];
-    if (!val) continue;
-    const label = field.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-    const isRedacted = fieldAccess[field] === 'redacted';
-    fieldsHTML += `<div class="doc-field"><span class="field-label">${label}</span><span class="field-value${isRedacted ? ' redacted' : ''}">${esc(val)}</span></div>`;
-  }
+        function renderUserProfile() {
+            const user = state.currentUser;
+            if (!user) return '';
 
-  return `
-    <div class="doc-card">
-      <div class="doc-header">
-        <span class="doc-title">${esc(doc.title)}</span>
-        <span class="badge badge-${doc.classification}">${doc.classification.replace('_', ' ')}</span>
-        <span class="badge badge-org">${esc(doc.organization)}</span>
-        ${allBadge}${cellBadges}
-      </div>
-      <div class="doc-content">${esc(doc.content)}</div>
-      <div class="doc-fields">${fieldsHTML}</div>
-    </div>`;
-}
+            const cells = (user.cell_memberships || []).map(c => 
+                `<span class="cell-badge">${c}</span>`
+            ).join('') || '<span class="text-muted">None</span>';
 
-// ═══════════════════════════════════════════════════════════════════
-// RENDER — COMPARE MODE
-// ═══════════════════════════════════════════════════════════════════
-function renderCompare(data) {
-  const header = document.getElementById('resultsHeader');
-  const summary = document.getElementById('resultsSummary');
-  const filter = document.getElementById('filterExplanation');
-  const container = document.getElementById('resultsContainer');
+            const compartments = (user.compartments || []).map(c =>
+                `<span class="badge badge-NTK">${c}</span>`
+            ).join('') || '<span class="text-muted">None</span>';
 
-  header.style.display = 'flex';
-  filter.style.display = 'block';
-  filter.textContent = `Comparing both security modes for ${data.user.name}  •  ${data.total_in_index} documents in index`;
-  summary.innerHTML = `RBAC: <span class="count">${data.rbac.visible}</span>  •  Cell-Level: <span class="count">${data.cell.visible}</span>  /  <span class="total">${data.total_in_index} total</span>`;
+            const roles = (user.roles || []).map(r =>
+                `<span class="cell-badge">${r}</span>`
+            ).join('');
 
-  const rbacCards = data.rbac.documents.map(renderDocCard).join('') || '<div class="empty-state"><div class="icon">🔒</div><p>No documents visible</p></div>';
-  const cellCards = data.cell.documents.map(renderDocCard).join('') || '<div class="empty-state"><div class="icon">🔒</div><p>No documents visible</p></div>';
+            return `
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">👤 Current User Profile</div>
+                        <span class="badge badge-${user.clearance}">${user.clearance}</span>
+                    </div>
+                    <div class="user-profile">
+                        <div>
+                            <div class="profile-field">
+                                <div class="profile-label">Username</div>
+                                <div class="profile-value mono">${user.username}</div>
+                            </div>
+                            <div class="profile-field">
+                                <div class="profile-label">Name</div>
+                                <div class="profile-value">${user.name}</div>
+                            </div>
+                            <div class="profile-field">
+                                <div class="profile-label">Organization</div>
+                                <div class="profile-value">${user.organization}</div>
+                            </div>
+                            <div class="profile-field">
+                                <div class="profile-label">Roles</div>
+                                <div class="profile-value">${roles}</div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="profile-field">
+                                <div class="profile-label">Cell Memberships</div>
+                                <div class="profile-value">${cells}</div>
+                            </div>
+                            <div class="profile-field">
+                                <div class="profile-label">Compartments (NTK)</div>
+                                <div class="profile-value">${compartments}</div>
+                            </div>
+                            <div class="profile-field">
+                                <div class="profile-label">Description</div>
+                                <div class="profile-value" style="color: var(--text-muted)">${user.description || ''}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
 
-  container.innerHTML = `
-    <div class="compare-grid">
-      <div class="compare-col rbac">
-        <h3>RBAC Mode <span class="count">(${data.rbac.visible} docs)</span></h3>
-        <div class="doc-grid">${rbacCards}</div>
-      </div>
-      <div class="compare-col cell">
-        <h3>Cell-Level Mode <span class="count">(${data.cell.visible} docs)</span></h3>
-        <div class="doc-grid">${cellCards}</div>
-      </div>
-    </div>`;
-}
+        function renderSearchBar() {
+            const isNtk = state.activeTab === 'ntk';
+            return `
+                <div class="search-bar">
+                    <input type="text" 
+                        class="search-input" 
+                        placeholder="Search documents..."
+                        value="${state.searchQuery}"
+                        onkeyup="if(event.key==='Enter') doSearch()"
+                        oninput="state.searchQuery = this.value">
+                    <button class="search-btn ${isNtk ? 'ntk' : ''}" onclick="doSearch()">
+                        Search
+                    </button>
+                    <button class="reset-btn" onclick="resetIndex()">
+                        ↺ Reset Data
+                    </button>
+                </div>
+            `;
+        }
 
-// ═══════════════════════════════════════════════════════════════════
-// UPLOAD
-// ═══════════════════════════════════════════════════════════════════
-async function uploadDocument() {
-  const csvToArr = v => v ? v.split(',').map(s => s.trim()).filter(Boolean) : [];
-  const body = {
-    title:          document.getElementById('upTitle').value,
-    content:        document.getElementById('upContent').value,
-    author:         document.getElementById('upAuthor').value || 'Unknown',
-    classification: document.getElementById('upClass').value,
-    organization:   document.getElementById('upOrg').value,
-    department:     document.getElementById('upDept').value || 'general',
-    cell_access:    csvToArr(document.getElementById('upCells').value) || ['all'],
-    shared_with:    csvToArr(document.getElementById('upShared').value),
-    source_name:    document.getElementById('upSource').value,
-    handler_id:     document.getElementById('upHandler').value,
-    raw_intel:      document.getElementById('upRawIntel').value,
-    location:       document.getElementById('upLocation').value,
-  };
-  if (!body.title || !body.content) { alert('Title and Content are required.'); return; }
+        function renderDocumentCard(doc, mode) {
+            const isNtkRestricted = doc.ntk_required;
+            const ntkStatus = doc._ntk_status;
+            
+            let ntkIndicator = '';
+            if (mode === 'ntk' && isNtkRestricted) {
+                const reason = ntkStatus?.reason || 'unknown';
+                const granted = ntkStatus?.has_access;
+                const reasonText = reason === 'explicit_user' ? 'Named User' :
+                                   reason === 'compartment_match' ? 'Compartment Match' :
+                                   reason === 'not_required' ? '' : 'Denied';
+                if (granted && reasonText) {
+                    ntkIndicator = `<span class="ntk-indicator granted">✓ NTK: ${reasonText}</span>`;
+                }
+            }
 
-  try {
-    const res = await fetch(`${API}/api/documents`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    alert(`Document indexed with ID: ${data.id}`);
-    document.getElementById('uploadPanel').classList.remove('open');
-    doSearch();
-  } catch (err) {
-    alert(`Upload failed: ${err.message}`);
-  }
-}
+            const sensitiveFields = ['source_name', 'handler_id', 'raw_intel'];
+            const fieldAccess = doc._field_access || {};
+            
+            const fieldsHtml = sensitiveFields.map(field => {
+                const value = doc[field] || '';
+                if (!value) return '';
+                
+                const access = fieldAccess[field] || 'visible';
+                let valueClass = '';
+                if (access === 'redacted') valueClass = 'redacted';
+                else if (access === 'cell_denied') valueClass = 'cell-denied';
+                else if (access === 'ntk_denied') valueClass = 'ntk-denied';
 
-// ═══════════════════════════════════════════════════════════════════
-// UTIL
-// ═══════════════════════════════════════════════════════════════════
-function esc(str) {
-  if (!str) return '';
-  const d = document.createElement('div');
-  d.textContent = str;
-  return d.innerHTML;
-}
-</script>
+                const label = field.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                return `
+                    <div class="field-row">
+                        <span class="field-label">${label}:</span>
+                        <span class="field-value ${valueClass}">${value}</span>
+                    </div>
+                `;
+            }).filter(h => h).join('');
+
+            const cellBadges = (doc.cell_access || []).map(c => 
+                `<span class="cell-badge">${c}</span>`
+            ).join('');
+
+            return `
+                <div class="doc-card ${isNtkRestricted ? 'ntk-restricted' : ''}">
+                    <div class="doc-header">
+                        <div>
+                            <div class="doc-title">${doc.title}</div>
+                            <div class="doc-meta">${doc.author} • ${doc.date_created} • ${doc.location || 'Unknown'}</div>
+                        </div>
+                        <span class="badge badge-${doc.classification}">${doc.classification}</span>
+                    </div>
+                    <div class="doc-content">${doc.content}</div>
+                    <div class="doc-badges">
+                        ${cellBadges}
+                        ${isNtkRestricted ? '<span class="badge badge-NTK">NTK Required</span>' : ''}
+                        ${ntkIndicator}
+                    </div>
+                    ${fieldsHtml ? `<div class="sensitive-fields">${fieldsHtml}</div>` : ''}
+                </div>
+            `;
+        }
+
+        function renderSearchResults() {
+            const results = state.searchResults;
+            if (!results) return '<div class="loading">Run a search to see results</div>';
+            if (state.loading) return '<div class="loading">Loading...</div>';
+
+            const isNtk = state.activeTab === 'ntk';
+            
+            return `
+                <div class="filter-explanation ${isNtk ? 'ntk' : ''}">
+                    ${results.filter_explanation}
+                </div>
+                <div class="stats-row">
+                    <div class="stat-box">
+                        <div class="stat-label">Total in Index</div>
+                        <div class="stat-value">${results.total_in_index}</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Visible to You</div>
+                        <div class="stat-value visible">${results.visible_count}</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Hidden</div>
+                        <div class="stat-value hidden">${results.hidden_count}</div>
+                    </div>
+                </div>
+                <div class="doc-grid">
+                    ${results.documents.map(doc => renderDocumentCard(doc, state.activeTab)).join('')}
+                </div>
+            `;
+        }
+
+        function renderCompareResults() {
+            const results = state.compareResults;
+            if (!results) return '<div class="loading">Run a search to compare modes</div>';
+            if (state.loading) return '<div class="loading">Loading...</div>';
+
+            function renderColumn(mode, data, title, colorClass) {
+                return `
+                    <div class="compare-column">
+                        <div class="compare-header">
+                            <span class="compare-title ${colorClass}">${title}</span>
+                            <span class="compare-count">${data.visible}</span>
+                        </div>
+                        <div class="doc-grid">
+                            ${data.documents.slice(0, 10).map(doc => renderDocumentCard(doc, mode)).join('')}
+                        </div>
+                        ${data.documents.length > 10 ? `<div style="text-align:center;padding:12px;color:var(--text-muted)">+${data.documents.length - 10} more</div>` : ''}
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="stats-row">
+                    <div class="stat-box">
+                        <div class="stat-label">Total Documents</div>
+                        <div class="stat-value">${results.total_in_index}</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">RBAC Visible</div>
+                        <div class="stat-value">${results.rbac.visible}</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Cell-Level Visible</div>
+                        <div class="stat-value">${results.cell.visible}</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">NTK Visible</div>
+                        <div class="stat-value ntk">${results.ntk.visible}</div>
+                    </div>
+                </div>
+                <div class="compare-grid">
+                    ${renderColumn('rbac', results.rbac, '🔐 RBAC Mode', 'rbac')}
+                    ${renderColumn('cell', results.cell, '🏢 Cell-Level Mode', 'cell')}
+                    ${renderColumn('ntk', results.ntk, '🔒 NTK Mode', 'ntk')}
+                </div>
+            `;
+        }
+
+        function render() {
+            const app = document.getElementById('app');
+            
+            if (!state.initialized) {
+                app.innerHTML = '<div class="loading">Initializing...</div>';
+                return;
+            }
+
+            if (state.showLoginScreen) {
+                app.innerHTML = `
+                    ${renderHeader()}
+                    ${renderLoginScreen()}
+                `;
+                return;
+            }
+
+            const content = state.activeTab === 'compare' 
+                ? renderCompareResults() 
+                : renderSearchResults();
+
+            app.innerHTML = `
+                ${renderHeader()}
+                ${renderTabs()}
+                <div class="main-content">
+                    ${renderUserSelector()}
+                    ${renderUserProfile()}
+                    ${renderSearchBar()}
+                    ${content}
+                </div>
+            `;
+        }
+
+        // Initialize
+        render();
+        initApp().catch(console.error);
+    </script>
 </body>
 </html>
