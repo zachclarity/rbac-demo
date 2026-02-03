@@ -1316,3 +1316,9 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.get("/")
 def serve_ui():
     return FileResponse("static/index.html")
+
+
+@app.get("/silent-check-sso.html")
+def serve_silent_sso():
+    """Serve Keycloak silent SSO check page at root level."""
+    return FileResponse("static/silent-check-sso.html")
