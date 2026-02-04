@@ -2,7 +2,1016 @@
 
 ![Login Screen](https://github.com/zactonicsai/rbac-demo/blob/main/rbacdemo.png)
 
+# OpenSearch Security Implementation with JWT Authentication
 
+## Executive Summary
+
+This document describes how the OpenSearch-based document search application implements three layers of security filtering using JWT (JSON Web Token) authentication from Keycloak. The system enforces access control at the **application layer** by dynamically constructing OpenSearch queries based on authenticated user attributes.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         SECURITY ARCHITECTURE OVERVIEW                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   ┌──────────┐      ┌──────────┐      ┌──────────┐      ┌──────────────┐   │
+│   │  User    │─────▶│ Keycloak │─────▶│  Search  │─────▶│  OpenSearch  │   │
+│   │ Browser  │      │   IdP    │      │   App    │      │    Index     │   │
+│   └──────────┘      └──────────┘      └──────────┘      └──────────────┘   │
+│        │                 │                  │                   │          │
+│        │   1. Login      │                  │                   │          │
+│        │────────────────▶│                  │                   │          │
+│        │                 │                  │                   │          │
+│        │   2. JWT Token  │                  │                   │          │
+│        │◀────────────────│                  │                   │          │
+│        │                 │                  │                   │          │
+│        │   3. Search Request + JWT          │                   │          │
+│        │───────────────────────────────────▶│                   │          │
+│        │                 │                  │                   │          │
+│        │                 │   4. Validate JWT│                   │          │
+│        │                 │◀─────────────────│                   │          │
+│        │                 │                  │                   │          │
+│        │                 │   5. User Claims │                   │          │
+│        │                 │─────────────────▶│                   │          │
+│        │                 │                  │                   │          │
+│        │                 │                  │ 6. Build Filtered │          │
+│        │                 │                  │    Query          │          │
+│        │                 │                  │──────────────────▶│          │
+│        │                 │                  │                   │          │
+│        │                 │                  │ 7. Filtered       │          │
+│        │                 │                  │    Results        │          │
+│        │                 │                  │◀──────────────────│          │
+│        │                 │                  │                   │          │
+│        │   8. Response (only authorized documents)              │          │
+│        │◀───────────────────────────────────│                   │          │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Table of Contents
+
+1. [Data Model](#1-data-model)
+2. [JWT Authentication Flow](#2-jwt-authentication-flow)
+3. [Security Modes](#3-security-modes)
+4. [OpenSearch Query Construction](#4-opensearch-query-construction)
+5. [Field-Level Masking](#5-field-level-masking)
+6. [Configuration Reference](#6-configuration-reference)
+7. [User Access Matrix](#7-user-access-matrix)
+
+---
+
+## 1. Data Model
+
+### 1.1 Document Schema
+
+Every document in OpenSearch contains security metadata that determines who can access it:
+
+```json
+{
+  "title": "Operation DELTA FORCE — Execution Orders",
+  "content": "Final execution orders for Operation DELTA FORCE...",
+  "author": "Operations Command",
+  
+  // ═══════════════════════════════════════════════════════════════
+  // SECURITY METADATA - Used for access control filtering
+  // ═══════════════════════════════════════════════════════════════
+  
+  // LAYER 1: RBAC (Role-Based Access Control)
+  "classification": "SECRET",           // UNCLASSIFIED | CONFIDENTIAL | SECRET | TOP_SECRET
+  "organization": "agency-alpha",       // Owning organization
+  "shared_with": ["agency-bravo"],      // Cross-org sharing list (or ["all"])
+  
+  // LAYER 2: Cell-Level Access
+  "cell_access": ["cell-hq", "cell-west"],  // Required cell memberships (or ["all"])
+  
+  // LAYER 3: Need-to-Know (NTK)
+  "ntk_required": true,                 // Is explicit NTK authorization required?
+  "ntk_users": ["alice_admin", "dave_manager"],  // Explicit user whitelist
+  "ntk_compartments": ["OPERATION_DELTA"],       // Required compartment access
+  
+  // SENSITIVE FIELDS (subject to masking)
+  "source_name": "OPS-CMD",
+  "handler_id": "DELTA-EXEC-01",
+  "raw_intel": "H-hour: 0300Z. Primary: Route Alpha.",
+  
+  // METADATA
+  "department": "operations",
+  "location": "Western Region",
+  "date_created": "2025-01-29"
+}
+```
+
+### 1.2 OpenSearch Index Mapping
+
+```json
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0
+  },
+  "mappings": {
+    "properties": {
+      "title":            { "type": "text", "analyzer": "standard" },
+      "content":          { "type": "text", "analyzer": "standard" },
+      "author":           { "type": "keyword" },
+      "classification":   { "type": "keyword" },
+      "organization":     { "type": "keyword" },
+      "department":       { "type": "keyword" },
+      "cell_access":      { "type": "keyword" },
+      "shared_with":      { "type": "keyword" },
+      "source_name":      { "type": "text" },
+      "handler_id":       { "type": "keyword" },
+      "raw_intel":        { "type": "text" },
+      "location":         { "type": "keyword" },
+      "date_created":     { "type": "date", "format": "yyyy-MM-dd" },
+      "ntk_required":     { "type": "boolean" },
+      "ntk_users":        { "type": "keyword" },
+      "ntk_compartments": { "type": "keyword" }
+    }
+  }
+}
+```
+
+### 1.3 User Profile Schema
+
+User attributes are extracted from JWT claims and mapped to a profile:
+
+```json
+{
+  "username": "dave_manager",
+  "name": "Dave Manager",
+  "organization": "agency-alpha",
+  "roles": ["manager", "analyst"],
+  "clearance": "SECRET",
+  "cell_memberships": ["cell-hq", "cell-west", "cell-east"],
+  "compartments": ["PROJECT_ALPHA", "OPERATION_DELTA"],
+  "department": "operations"
+}
+```
+
+### 1.4 Classification Hierarchy
+
+Classifications are hierarchical — higher clearance grants access to all lower levels:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  CLASSIFICATION HIERARCHY                    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│   TOP_SECRET ────────────────────────────────────▶ Level 4  │
+│       │                                                     │
+│       ▼                                                     │
+│   SECRET ────────────────────────────────────────▶ Level 3  │
+│       │                                                     │
+│       ▼                                                     │
+│   CONFIDENTIAL ──────────────────────────────────▶ Level 2  │
+│       │                                                     │
+│       ▼                                                     │
+│   UNCLASSIFIED ──────────────────────────────────▶ Level 1  │
+│                                                             │
+│   User with SECRET clearance can access:                    │
+│   ✓ SECRET, CONFIDENTIAL, UNCLASSIFIED                      │
+│   ✗ TOP_SECRET                                              │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 2. JWT Authentication Flow
+
+### 2.1 Keycloak Token Structure
+
+When a user authenticates via Keycloak, they receive a JWT with custom claims:
+
+```json
+{
+  "exp": 1738700000,
+  "iat": 1738696400,
+  "sub": "user-uuid-here",
+  "preferred_username": "dave_manager",
+  "email": "dave@agency-alpha.gov",
+  "given_name": "Dave",
+  "family_name": "Manager",
+  
+  // ═══════════════════════════════════════════════════════════════
+  // CUSTOM SECURITY CLAIMS (configured in Keycloak)
+  // ═══════════════════════════════════════════════════════════════
+  "clearance_level": "SECRET",
+  "organization": "Agency Alpha",
+  "compartments": ["PROJECT_ALPHA", "OPERATION_DELTA"],
+  "realm_access": {
+    "roles": ["manager", "analyst", "default-roles-agency-alpha"]
+  }
+}
+```
+
+### 2.2 JWT Validation Process
+
+```python
+# Step 1: Extract token from Authorization header
+# Header: "Authorization: Bearer eyJhbGciOiJSUzI1NiIs..."
+
+async def get_current_user(authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        return None  # No token = anonymous/demo user
+    
+    token = authorization.split(" ")[1]
+    
+    # Step 2: Fetch Keycloak's public keys (JWKS)
+    jwks = await fetch_jwks()  # Cached for 5 minutes
+    # URL: http://keycloak:8080/realms/agency-alpha/protocol/openid-connect/certs
+    
+    # Step 3: Extract key ID from token header
+    header = jwt.get_unverified_header(token)
+    kid = header.get("kid")
+    
+    # Step 4: Find matching public key
+    key_data = jwks.get(kid)
+    public_key = jwk.construct(key_data)
+    
+    # Step 5: Verify signature and decode claims
+    payload = jwt.decode(
+        token,
+        public_key.to_pem().decode("utf-8"),
+        algorithms=["RS256"],
+        audience="account"  # Or your client ID
+    )
+    
+    # Step 6: Extract user attributes
+    return AuthenticatedUser(
+        username=payload.get("preferred_username"),
+        clearance_level=payload.get("clearance_level", "UNCLASSIFIED"),
+        organization=payload.get("organization", "agency-alpha"),
+        compartments=payload.get("compartments", []),
+        roles=extract_roles(payload)
+    )
+```
+
+### 2.3 JWKS Caching
+
+To avoid fetching public keys on every request:
+
+```python
+_jwks_cache = {"keys": {}, "fetched_at": 0}
+JWKS_CACHE_TTL = 300  # 5 minutes
+
+async def fetch_jwks():
+    now = time.time()
+    if _jwks_cache["keys"] and (now - _jwks_cache["fetched_at"]) < JWKS_CACHE_TTL:
+        return _jwks_cache["keys"]  # Return cached keys
+    
+    # Fetch fresh keys from Keycloak
+    jwks_url = f"{KEYCLOAK_URL}/realms/{REALM}/protocol/openid-connect/certs"
+    response = await httpx.get(jwks_url)
+    jwks_data = response.json()
+    
+    # Cache by key ID for fast lookup
+    _jwks_cache["keys"] = {k["kid"]: k for k in jwks_data["keys"]}
+    _jwks_cache["fetched_at"] = now
+    
+    return _jwks_cache["keys"]
+```
+
+---
+
+## 3. Security Modes
+
+The application implements three progressively restrictive security modes:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         SECURITY MODE COMPARISON                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   MODE 1: RBAC                                                              │
+│   ═══════════════════════════════════════════════════════════════════════   │
+│   Filters:  Classification + Organization                                   │
+│   Logic:    user.clearance >= doc.classification                            │
+│             AND (doc.org == user.org OR doc.shared_with contains user.org)  │
+│                                                                             │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │  User: SECRET clearance, agency-alpha                               │   │
+│   │  Sees: All UNCLASSIFIED, CONFIDENTIAL, SECRET docs from alpha       │   │
+│   │        + docs shared with alpha or "all"                            │   │
+│   │  Hidden: TOP_SECRET docs, agency-bravo exclusive docs               │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│   MODE 2: CELL-LEVEL                                                        │
+│   ═══════════════════════════════════════════════════════════════════════   │
+│   Filters:  RBAC + Cell Membership + Field Masking                          │
+│   Logic:    (RBAC filters)                                                  │
+│             AND (doc.cell_access contains "all" OR                          │
+│                  doc.cell_access intersects user.cells)                     │
+│                                                                             │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │  User: SECRET, agency-alpha, cells=[cell-hq, cell-west]             │   │
+│   │  Sees: RBAC-allowed docs WHERE cell_access includes hq/west/all     │   │
+│   │  Masked: source_name, handler_id, raw_intel (if cell mismatch)      │   │
+│   │  Hidden: Docs requiring cell-east or cell-cyber only                │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│   MODE 3: NEED-TO-KNOW (NTK)                                                │
+│   ═══════════════════════════════════════════════════════════════════════   │
+│   Filters:  Cell-Level + Explicit User/Compartment Authorization            │
+│   Logic:    (Cell filters)                                                  │
+│             AND (doc.ntk_required == false                                  │
+│                  OR user.username IN doc.ntk_users                          │
+│                  OR user.compartments intersects doc.ntk_compartments)      │
+│                                                                             │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │  User: SECRET, agency-alpha, cells=[hq,west], comps=[ALPHA,DELTA]   │   │
+│   │  Sees: Cell-allowed docs WHERE:                                     │   │
+│   │        - ntk_required=false, OR                                     │   │
+│   │        - username is in ntk_users list, OR                          │   │
+│   │        - user has matching compartment                              │   │
+│   │  Hidden: NTK docs where user not whitelisted & no compartment match │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 4. OpenSearch Query Construction
+
+### 4.1 RBAC Query
+
+```python
+def build_rbac_query(search_text: str, user: dict) -> dict:
+    """
+    RBAC = Classification clearance + Organization membership
+    """
+    # Get classifications user can access
+    allowed_classifications = get_allowed_classifications(user["clearance"])
+    # e.g., SECRET user gets ["UNCLASSIFIED", "CONFIDENTIAL", "SECRET"]
+    
+    return {
+        "query": {
+            "bool": {
+                "must": [
+                    # Text search (or match_all if empty)
+                    text_query(search_text)
+                ],
+                "filter": [
+                    # FILTER 1: Classification must be at or below user's level
+                    {
+                        "terms": {
+                            "classification": allowed_classifications
+                        }
+                    },
+                    # FILTER 2: Organization check
+                    {
+                        "bool": {
+                            "should": [
+                                # Document belongs to user's org
+                                {"term": {"organization": user["organization"]}},
+                                # Document is shared with user's org
+                                {"term": {"shared_with": user["organization"]}},
+                                # Document is shared with everyone
+                                {"term": {"shared_with": "all"}}
+                            ],
+                            "minimum_should_match": 1
+                        }
+                    }
+                ]
+            }
+        },
+        "size": 100
+    }
+```
+
+**Example Generated Query for `bob_analyst` (SECRET, agency-alpha):**
+
+```json
+{
+  "query": {
+    "bool": {
+      "must": [{ "match_all": {} }],
+      "filter": [
+        {
+          "terms": {
+            "classification": ["UNCLASSIFIED", "CONFIDENTIAL", "SECRET"]
+          }
+        },
+        {
+          "bool": {
+            "should": [
+              { "term": { "organization": "agency-alpha" } },
+              { "term": { "shared_with": "agency-alpha" } },
+              { "term": { "shared_with": "all" } }
+            ],
+            "minimum_should_match": 1
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+### 4.2 Cell-Level Query
+
+```python
+def build_cell_query(search_text: str, user: dict) -> dict:
+    """
+    Cell-Level = RBAC + Cell membership check
+    """
+    allowed_classifications = get_allowed_classifications(user["clearance"])
+    user_cells = user.get("cell_memberships", [])
+    
+    return {
+        "query": {
+            "bool": {
+                "must": [text_query(search_text)],
+                "filter": [
+                    # FILTER 1: Classification (same as RBAC)
+                    {"terms": {"classification": allowed_classifications}},
+                    
+                    # FILTER 2: Organization (same as RBAC)
+                    {
+                        "bool": {
+                            "should": [
+                                {"term": {"organization": user["organization"]}},
+                                {"term": {"shared_with": user["organization"]}},
+                                {"term": {"shared_with": "all"}}
+                            ],
+                            "minimum_should_match": 1
+                        }
+                    },
+                    
+                    # FILTER 3: Cell access
+                    {
+                        "bool": {
+                            "should": [
+                                # Document allows all cells
+                                {"term": {"cell_access": "all"}},
+                                # User has at least one matching cell
+                                {"terms": {"cell_access": user_cells}}
+                            ],
+                            "minimum_should_match": 1
+                        }
+                    }
+                ]
+            }
+        }
+    }
+```
+
+**Example Generated Query for `dave_manager` (cells: hq, west, east):**
+
+```json
+{
+  "query": {
+    "bool": {
+      "filter": [
+        { "terms": { "classification": ["UNCLASSIFIED", "CONFIDENTIAL", "SECRET"] } },
+        {
+          "bool": {
+            "should": [
+              { "term": { "organization": "agency-alpha" } },
+              { "term": { "shared_with": "agency-alpha" } },
+              { "term": { "shared_with": "all" } }
+            ]
+          }
+        },
+        {
+          "bool": {
+            "should": [
+              { "term": { "cell_access": "all" } },
+              { "terms": { "cell_access": ["cell-hq", "cell-west", "cell-east"] } }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+### 4.3 Need-to-Know (NTK) Query
+
+```python
+def build_ntk_query(search_text: str, user: dict) -> dict:
+    """
+    NTK = Cell-Level + Explicit user authorization OR compartment match
+    """
+    allowed_classifications = get_allowed_classifications(user["clearance"])
+    user_cells = user.get("cell_memberships", [])
+    user_compartments = user.get("compartments", [])
+    username = user["username"]
+    
+    return {
+        "query": {
+            "bool": {
+                "must": [text_query(search_text)],
+                "filter": [
+                    # FILTER 1: Classification
+                    {"terms": {"classification": allowed_classifications}},
+                    
+                    # FILTER 2: Organization
+                    {"bool": {"should": [
+                        {"term": {"organization": user["organization"]}},
+                        {"term": {"shared_with": user["organization"]}},
+                        {"term": {"shared_with": "all"}}
+                    ], "minimum_should_match": 1}},
+                    
+                    # FILTER 3: Cell access
+                    {"bool": {"should": [
+                        {"term": {"cell_access": "all"}},
+                        {"terms": {"cell_access": user_cells}}
+                    ], "minimum_should_match": 1}},
+                    
+                    # FILTER 4: NTK check
+                    {
+                        "bool": {
+                            "should": [
+                                # Option A: NTK not required
+                                {"term": {"ntk_required": False}},
+                                
+                                # Option B: User explicitly whitelisted
+                                {"term": {"ntk_users": username}},
+                                
+                                # Option C: User has required compartment
+                                {"terms": {"ntk_compartments": user_compartments}}
+                            ],
+                            "minimum_should_match": 1
+                        }
+                    }
+                ]
+            }
+        }
+    }
+```
+
+**Example Generated Query for `bob_analyst` (compartments: ALPHA, OMEGA):**
+
+```json
+{
+  "query": {
+    "bool": {
+      "filter": [
+        { "terms": { "classification": ["UNCLASSIFIED", "CONFIDENTIAL", "SECRET"] } },
+        { "bool": { "should": [/* org filters */] } },
+        { "bool": { "should": [/* cell filters */] } },
+        {
+          "bool": {
+            "should": [
+              { "term": { "ntk_required": false } },
+              { "term": { "ntk_users": "bob_analyst" } },
+              { "terms": { "ntk_compartments": ["PROJECT_ALPHA", "PROJECT_OMEGA"] } }
+            ],
+            "minimum_should_match": 1
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+---
+
+## 5. Field-Level Masking
+
+After query execution, sensitive fields are masked for documents where the user lacks full access:
+
+### 5.1 Masking Logic
+
+```python
+SENSITIVE_FIELDS = ["source_name", "handler_id", "raw_intel"]
+
+def apply_field_masking(hits: list, user: dict, mode: str):
+    """
+    Mask sensitive fields based on cell membership and NTK status.
+    """
+    user_cells = set(user.get("cell_memberships", []))
+    user_compartments = set(user.get("compartments", []))
+    username = user["username"]
+    
+    for hit in hits:
+        doc = hit["_source"]
+        doc_cells = set(doc.get("cell_access", []))
+        
+        # Check cell access
+        has_cell_access = "all" in doc_cells or bool(user_cells & doc_cells)
+        
+        # Check NTK access (only in NTK mode)
+        has_ntk_access = True
+        if mode == "ntk" and doc.get("ntk_required"):
+            ntk_users = set(doc.get("ntk_users", []))
+            ntk_compartments = set(doc.get("ntk_compartments", []))
+            has_ntk_access = (
+                username in ntk_users or
+                bool(user_compartments & ntk_compartments)
+            )
+        
+        # Apply masking
+        if not has_cell_access:
+            for field in SENSITIVE_FIELDS:
+                if doc.get(field):
+                    doc[field] = "██ CELL RESTRICTED ██"
+        elif not has_ntk_access:
+            for field in SENSITIVE_FIELDS:
+                if doc.get(field):
+                    doc[field] = "██ NTK RESTRICTED ██"
+```
+
+### 5.2 Masking Examples
+
+**Document:** "Operation DELTA FORCE — Execution Orders"
+- `cell_access`: ["cell-hq", "cell-west"]
+- `ntk_required`: true
+- `ntk_users`: ["alice_admin", "dave_manager"]
+- `ntk_compartments`: ["OPERATION_DELTA"]
+
+| User | Cells | Compartments | Cell Access? | NTK Access? | Field Display |
+|------|-------|--------------|--------------|-------------|---------------|
+| alice_admin | all | all | ✓ | ✓ (whitelisted) | Full visibility |
+| dave_manager | hq, west, east | ALPHA, DELTA | ✓ | ✓ (whitelisted + compartment) | Full visibility |
+| bob_analyst | hq, east, cyber | ALPHA, OMEGA | ✓ (hq) | ✗ (not listed, no DELTA) | `██ NTK RESTRICTED ██` |
+| frank_bravo | west | ALPHA | ✓ (west) | ✗ (not listed, no DELTA) | `██ NTK RESTRICTED ██` |
+| carol_viewer | hq, east | ALPHA | ✓ (hq) | ✗ | `██ NTK RESTRICTED ██` |
+
+---
+
+## 6. Configuration Reference
+
+### 6.1 Environment Variables
+
+```bash
+# OpenSearch Connection
+OPENSEARCH_HOST=opensearch
+OPENSEARCH_PORT=9200
+INDEX_NAME=secure-documents
+
+# Keycloak Configuration
+KEYCLOAK_URL=http://keycloak:8080
+KEYCLOAK_REALM=agency-alpha
+KEYCLOAK_CLIENT_ID=frontend-app
+```
+
+### 6.2 Keycloak Realm Configuration
+
+Custom user attributes must be configured in Keycloak:
+
+```json
+{
+  "realm": "agency-alpha",
+  "users": [
+    {
+      "username": "dave_manager",
+      "enabled": true,
+      "attributes": {
+        "clearance_level": ["SECRET"],
+        "organization": ["Agency Alpha"],
+        "compartments": ["PROJECT_ALPHA", "OPERATION_DELTA"]
+      },
+      "realmRoles": ["manager", "analyst"]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "frontend-app",
+      "publicClient": true,
+      "redirectUris": ["http://localhost:8002/*"],
+      "webOrigins": ["*"],
+      "protocolMappers": [
+        {
+          "name": "clearance_level",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "clearance_level",
+            "claim.name": "clearance_level",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "compartments",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "compartments",
+            "claim.name": "compartments",
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+### 6.3 Classification Level Mapping
+
+```python
+CLASSIFICATION_LEVELS = {
+    "UNCLASSIFIED": 1,
+    "CONFIDENTIAL": 2,
+    "SECRET": 3,
+    "TOP_SECRET": 4
+}
+
+def get_allowed_classifications(user_clearance: str) -> list:
+    """Return all classifications at or below user's level."""
+    user_level = CLASSIFICATION_LEVELS.get(user_clearance, 1)
+    return [
+        classification 
+        for classification, level in CLASSIFICATION_LEVELS.items()
+        if level <= user_level
+    ]
+```
+
+### 6.4 Compartment-to-Cell Mapping
+
+```python
+COMPARTMENT_CELL_MAP = {
+    "PROJECT_ALPHA": ["cell-hq", "cell-east"],
+    "PROJECT_OMEGA": ["cell-hq", "cell-cyber"],
+    "OPERATION_DELTA": ["cell-west", "cell-hq"],
+}
+
+def compartments_to_cells(compartments: list, is_admin: bool) -> list:
+    """Map compartments to cell memberships."""
+    if is_admin:
+        return ["cell-hq", "cell-east", "cell-west", "cell-cyber"]
+    
+    cells = set()
+    for comp in compartments:
+        cells.update(COMPARTMENT_CELL_MAP.get(comp, []))
+    return list(cells)
+```
+
+---
+
+## 7. User Access Matrix
+
+### 7.1 Test Users
+
+| Username | Clearance | Organization | Cells | Compartments |
+|----------|-----------|--------------|-------|--------------|
+| alice_admin | TOP_SECRET | agency-alpha | all | ALPHA, OMEGA, DELTA |
+| bob_analyst | SECRET | agency-alpha | hq, east, cyber | ALPHA, OMEGA |
+| carol_viewer | CONFIDENTIAL | agency-alpha | hq, east | ALPHA |
+| dave_manager | SECRET | agency-alpha | hq, west, east | ALPHA, DELTA |
+| eve_auditor | TOP_SECRET | agency-alpha | all | ALPHA, OMEGA, DELTA |
+| frank_bravo | SECRET | agency-bravo | west | ALPHA |
+| grace_bravo | CONFIDENTIAL | agency-bravo | (none) | (none) |
+
+### 7.2 Expected Document Access (66 Total Documents)
+
+| User | RBAC Mode | Cell-Level Mode | NTK Mode |
+|------|-----------|-----------------|----------|
+| alice_admin | 66 | 66 | 66 |
+| bob_analyst | 49 | 38 | 28 |
+| carol_viewer | 27 | 18 | 10 |
+| dave_manager | 49 | 42 | 34 |
+| eve_auditor | 66 | 66 | 52 |
+| frank_bravo | 15 | 8 | 6 |
+| grace_bravo | 10 | 3 | 2 |
+
+### 7.3 NTK Document Access Examples
+
+| Document | alice | bob | carol | dave | eve | frank | grace |
+|----------|-------|-----|-------|------|-----|-------|-------|
+| Carol's Performance Review | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
+| Bob's Training Assignment | ✓ | ✓ | ✗ | ✓ | ✗ | ✗ | ✗ |
+| Dave's Management Plan | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ | ✗ |
+| Frank's Access Request | ✓ | ✗ | ✗ | ✓ | ✗ | ✓ | ✗ |
+| Grace's Clearance Upgrade | ✓ | ✗ | ✗ | ✗ | ✓ | ✗ | ✓ |
+| Director's Daily Brief | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| DELTA FORCE Execution Orders | ✓ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ |
+| Operation ALPHA STRIKE | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+
+**Access Logic:**
+- ✓ = User in `ntk_users` list OR user has matching compartment in `ntk_compartments`
+- ✗ = Neither condition met
+
+---
+
+## 8. API Endpoints
+
+### 8.1 Search Endpoint
+
+```
+POST /api/search
+Authorization: Bearer <JWT>
+Content-Type: application/json
+
+{
+  "query": "operation delta",
+  "mode": "ntk",           // "rbac" | "cell" | "ntk"
+  "user_id": "bob_analyst" // Only for demo mode (no JWT)
+}
+```
+
+**Response:**
+```json
+{
+  "mode": "ntk",
+  "user": { /* user profile */ },
+  "query_text": "operation delta",
+  "filter_explanation": "Classification ≤ SECRET • Organisation = agency-alpha • Cells = cell-hq, cell-east, cell-cyber • Compartments = PROJECT_ALPHA, PROJECT_OMEGA • NTK check: user in ntk_users OR matching compartment",
+  "total_in_index": 66,
+  "visible_count": 8,
+  "hidden_count": 58,
+  "documents": [ /* filtered results */ ]
+}
+```
+
+### 8.2 Compare Endpoint
+
+```
+POST /api/compare
+Authorization: Bearer <JWT>
+
+{
+  "query": "budget",
+  "user_id": null
+}
+```
+
+**Response:**
+```json
+{
+  "total_in_index": 66,
+  "rbac": { "visible": 12, "documents": [...] },
+  "cell": { "visible": 8, "documents": [...] },
+  "ntk": { "visible": 5, "documents": [...] }
+}
+```
+
+---
+
+## 9. Security Considerations
+
+### 9.1 Defense in Depth
+
+This implementation uses **application-layer filtering**, not OpenSearch's native security features. This means:
+
+1. **All queries go through the application** — Direct OpenSearch access must be blocked
+2. **JWT validation is critical** — Invalid tokens must be rejected
+3. **Query construction must be bulletproof** — No SQL/query injection possible
+
+### 9.2 What This Does NOT Protect Against
+
+- Direct OpenSearch API access (use network isolation)
+- Compromised application server
+- JWT key compromise
+- Malicious administrators with database access
+
+### 9.3 Recommendations for Production
+
+1. **Enable OpenSearch Security Plugin** — Add authentication at the database layer
+2. **Use HTTPS everywhere** — Encrypt JWT tokens in transit
+3. **Implement audit logging** — Track who accessed what
+4. **Add rate limiting** — Prevent enumeration attacks
+5. **Use short-lived tokens** — Reduce window of compromise
+
+---
+
+## Appendix A: Complete Query Flow Diagram
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                           COMPLETE QUERY FLOW                                 │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  1. USER REQUEST                                                             │
+│  ════════════════════════════════════════════════════════════════════════    │
+│  POST /api/search                                                            │
+│  Authorization: Bearer eyJhbGciOiJSUzI1NiIs...                               │
+│  {"query": "budget", "mode": "ntk"}                                          │
+│                                                                              │
+│                              │                                               │
+│                              ▼                                               │
+│                                                                              │
+│  2. JWT VALIDATION                                                           │
+│  ════════════════════════════════════════════════════════════════════════    │
+│  ┌────────────────────────────────────────────────────────────────────────┐  │
+│  │ async def get_current_user(authorization):                             │  │
+│  │     token = extract_bearer_token(authorization)                        │  │
+│  │     jwks = await fetch_jwks()  # Cached                                │  │
+│  │     public_key = jwks[token.header.kid]                                │  │
+│  │     payload = jwt.decode(token, public_key, algorithms=["RS256"])      │  │
+│  │     return AuthenticatedUser(                                          │  │
+│  │         username=payload["preferred_username"],                        │  │
+│  │         clearance_level=payload["clearance_level"],                    │  │
+│  │         organization=payload["organization"],                          │  │
+│  │         compartments=payload["compartments"],                          │  │
+│  │         roles=payload["realm_access"]["roles"]                         │  │
+│  │     )                                                                  │  │
+│  └────────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+│                              │                                               │
+│                              ▼                                               │
+│                                                                              │
+│  3. USER PROFILE LOOKUP                                                      │
+│  ════════════════════════════════════════════════════════════════════════    │
+│  ┌────────────────────────────────────────────────────────────────────────┐  │
+│  │ user = {                                                               │  │
+│  │     "username": "dave_manager",                                        │  │
+│  │     "clearance": "SECRET",                                             │  │
+│  │     "organization": "agency-alpha",                                    │  │
+│  │     "cell_memberships": ["cell-hq", "cell-west", "cell-east"],         │  │
+│  │     "compartments": ["PROJECT_ALPHA", "OPERATION_DELTA"]               │  │
+│  │ }                                                                      │  │
+│  └────────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+│                              │                                               │
+│                              ▼                                               │
+│                                                                              │
+│  4. QUERY CONSTRUCTION (NTK MODE)                                            │
+│  ════════════════════════════════════════════════════════════════════════    │
+│  ┌────────────────────────────────────────────────────────────────────────┐  │
+│  │ {                                                                      │  │
+│  │   "query": {                                                           │  │
+│  │     "bool": {                                                          │  │
+│  │       "must": [{"multi_match": {"query": "budget", ...}}],             │  │
+│  │       "filter": [                                                      │  │
+│  │         {"terms": {"classification": ["UNCLASSIFIED","CONFIDENTIAL",   │  │
+│  │                                        "SECRET"]}},                    │  │
+│  │         {"bool": {"should": [                                          │  │
+│  │           {"term": {"organization": "agency-alpha"}},                  │  │
+│  │           {"term": {"shared_with": "agency-alpha"}},                   │  │
+│  │           {"term": {"shared_with": "all"}}                             │  │
+│  │         ]}},                                                           │  │
+│  │         {"bool": {"should": [                                          │  │
+│  │           {"term": {"cell_access": "all"}},                            │  │
+│  │           {"terms": {"cell_access": ["cell-hq","cell-west","cell-east"]}}│ │
+│  │         ]}},                                                           │  │
+│  │         {"bool": {"should": [                                          │  │
+│  │           {"term": {"ntk_required": false}},                           │  │
+│  │           {"term": {"ntk_users": "dave_manager"}},                     │  │
+│  │           {"terms": {"ntk_compartments": ["PROJECT_ALPHA",             │  │
+│  │                                           "OPERATION_DELTA"]}}         │  │
+│  │         ]}}                                                            │  │
+│  │       ]                                                                │  │
+│  │     }                                                                  │  │
+│  │   }                                                                    │  │
+│  │ }                                                                      │  │
+│  └────────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+│                              │                                               │
+│                              ▼                                               │
+│                                                                              │
+│  5. OPENSEARCH EXECUTION                                                     │
+│  ════════════════════════════════════════════════════════════════════════    │
+│  os_client.search(index="secure-documents", body=query)                      │
+│                                                                              │
+│                              │                                               │
+│                              ▼                                               │
+│                                                                              │
+│  6. FIELD MASKING                                                            │
+│  ════════════════════════════════════════════════════════════════════════    │
+│  ┌────────────────────────────────────────────────────────────────────────┐  │
+│  │ for doc in results:                                                    │  │
+│  │     if not has_cell_access(user, doc):                                 │  │
+│  │         doc.source_name = "██ CELL RESTRICTED ██"                      │  │
+│  │         doc.handler_id = "██ CELL RESTRICTED ██"                       │  │
+│  │         doc.raw_intel = "██ CELL RESTRICTED ██"                        │  │
+│  │     elif not has_ntk_access(user, doc):                                │  │
+│  │         doc.source_name = "██ NTK RESTRICTED ██"                       │  │
+│  │         doc.handler_id = "██ NTK RESTRICTED ██"                        │  │
+│  │         doc.raw_intel = "██ NTK RESTRICTED ██"                         │  │
+│  └────────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+│                              │                                               │
+│                              ▼                                               │
+│                                                                              │
+│  7. RESPONSE                                                                 │
+│  ════════════════════════════════════════════════════════════════════════    │
+│  {                                                                           │
+│    "mode": "ntk",                                                            │
+│    "total_in_index": 66,                                                     │
+│    "visible_count": 5,                                                       │
+│    "documents": [/* filtered & masked results */]                            │
+│  }                                                                           │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Appendix B: Glossary
+
+| Term | Definition |
+|------|------------|
+| **RBAC** | Role-Based Access Control — filtering by classification level and organization |
+| **Cell** | A compartmentalized organizational unit (e.g., cell-hq, cell-west) |
+| **Compartment** | A project or program with restricted access (e.g., PROJECT_ALPHA) |
+| **NTK** | Need-to-Know — explicit authorization required beyond clearance level |
+| **JWT** | JSON Web Token — signed token containing user claims |
+| **JWKS** | JSON Web Key Set — public keys used to verify JWT signatures |
+| **Field Masking** | Hiding sensitive fields from users who lack full access |
+| **Clearance** | Security level (UNCLASSIFIED → CONFIDENTIAL → SECRET → TOP_SECRET) |
+
+---
 # OpenSearch + Keycloak + NTK Security Integration
 
 ## Overview
